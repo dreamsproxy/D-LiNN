@@ -1,8 +1,8 @@
 #import socket
-from modules.activation import LIF
+from modules import LIF
 from modules import networking
 from queue import Queue
-import socket
+import socketserver
 import threading
 import time
 from random import uniform

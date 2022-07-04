@@ -3,7 +3,7 @@ from re import I
 import numpy as np
 import time
 
-def LIF(gl=0.16, Cm=0.0049, mutable_return = None, tick_lim = 100):
+def LIF(timestep = 0, gl=0.16, Cm=0.0049, mutable_return = None, tick_lim = 100):
 
     ######### Constants
     El      =   -0.065                      # resting membrane potential [V]
@@ -28,14 +28,13 @@ def LIF(gl=0.16, Cm=0.0049, mutable_return = None, tick_lim = 100):
         V[tick-1] = 0.04   # set the last step to spike value
         V[tick] = El       # current step is resting membrane potential
         #spikes += 1     # count spike
-        spike = True
     #time.sleep(1)
     #return
     #print(timestep.shape)
     #print(V.shape)
     #print(I.shape)
 
-    mutable_return.append([timestep, V, I, spike])
+    mutable_return.append([timestep, V, I])
 
     return
 

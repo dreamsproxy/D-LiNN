@@ -1,15 +1,33 @@
-import socketserver
-from modules import activation
-class MyUDPHandler(socketserver.BaseRequestHandler):
+import socket
+import json
 
-    def handle(self):
-        data = self.request[0].strip()
-        socket = self.request[1]
-        print("{} wrote:".format(self.client_address))
-        socket.sendto(data.upper(), self.client_address)
-        activation.LIF()
+HOST = "127.0.0.1"
+PORT = 5550
+"""
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 
-if __name__ == "__main__":
-    HOST, PORT = "localhost", 9999
-    server = socketserver.UDPServer((HOST, PORT), MyUDPHandler)
-    server.serve_forever()
+sock.bind((HOST, PORT))
+
+while True:
+    try:
+        data, addr = sock.recvfrom(1024, socket.MSG_DONTWAIT)
+        print('received data', data)
+        msg = json.loads(data.decode('ascii'))
+        print('parsed message', msg)
+
+        print('LX =', msg['LX'])
+    except socket.timeout as e:
+        pass
+"""
+import socket
+import time
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+starttime = time.time()
+try:
+    m = sock.recv(100, socket.MSG_DONTWAIT)
+except BlockingIOError as e:
+    pass
+
+endtime = time.time()
+print(f'sock.recv(100, socket.MSG_DONTWAIT) took {endtime-starttime}s')
