@@ -14,7 +14,7 @@ if len(sys.argv) > 2:
 context = zmq.Context()
 socket = context.socket(zmq.SUB)
 
-print ("Collecting updates from weather server...")
+print ("Collecting updates from server...")
 socket.connect ("tcp://localhost:%s" % port)
 
 if len(sys.argv) > 2:
