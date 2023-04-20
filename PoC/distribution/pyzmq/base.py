@@ -8,7 +8,6 @@ import threading
 global DEBUG
 DEBUG = False
 thread_control = threading.Condition()
-global periodical_array
 
 class ServerThread(threading.Thread):
     def __init__(self, name, sender_id, source_branch_port):
@@ -80,7 +79,6 @@ def main():
     #data_array = [["Sender ID", "Branch Port", "Target ID", "Branch Port", ["Voltage", "time taken"]]]
     #data_array = [["N0", "5565", "N1", "5565", ["-55", "30"]]]
     periodical_array = []
-    global array_format
     array_format = f"[[{sender_id}, {source_branch_port}, {target_id}, {target_branch_port}, [{Voltage}, {delta_T}]]]"
 
     n_listeners = 3
@@ -89,6 +87,6 @@ def main():
     client_thread = threading.Thread(target=ListenerThread, args=(DEBUG, branch_port, i), daemon=True)
     client_thread.start()
     print(f"[LOG]\tListener {i} Started")
-
     #print("Started All Listeners")
 
+main()
