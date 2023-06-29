@@ -2,3 +2,4 @@ n-mnist
 Learning/
 *.code-workspace
 n-mnist/
+prototype**/
