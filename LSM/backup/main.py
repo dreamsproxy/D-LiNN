@@ -26,24 +26,20 @@ class WeightMatrix:
         print(self.matrix)
     
 class LIF:
-    def __init__(self, neuron_id: str) -> None:
+    def __init__(self, neuron_id, T = 100) -> None:
         self.neuron_id = neuron_id
         # Define simulation parameters
         self.dT = 0.1  # Time step
-        self.tau_m = np.float16(10.0)  # Membrane time constant
-        self.V_reset = np.float16(0.0)  # Reset voltage
-        self.V_threshold = np.float16(1.0)  # Spike threshold
+        self.tau_m = 10.0  # Membrane time constant
+        self.V_reset = 0.0  # Reset voltage
+        self.V_threshold = 1.0  # Spike threshold
 
         self.V = list()
-        self.spike_log = list()
+        self.spikes = list()
         self.spike_bool = False
 
     # Define a function to update the LIF neuron's state
-    def update(self, current_input = np.float16(0), trim_lim: int = 10):
-        if len(self.spike_log) >= trim_lim:
-            del self.spike_log[0]
-        else:
-            pass
+    def update(self, current_input = 0):
         # If the voltage log is empty, assume it is at 0.0, then perform calculation
         if len(self.V) < 1:
             delta_V = (current_input - np.float16(0.000)) / self.tau_m
@@ -54,12 +50,11 @@ class LIF:
 
         if self.V[-1] >= self.V_threshold:
             self.V[-1] = self.V_reset
-            self.spike_log.append("1")
+            self.spikes.append(1)
             self.spike_bool = True
         else:
-            self.spike_log.append("0")
+            self.spikes.append(0)
             self.spike_bool = False
-
 
 class Network:
     def __init__(self, n_neurons, w_init = None) -> None:
@@ -69,7 +64,6 @@ class Network:
         self.weightmatrix = self.weightsclass.matrix
         self.wave_dict = dict()
         self.weight_log = []
-        self.spike_mem = {}
 
     def InitNetwork(self):
         for i in range(self.n_neurons):
@@ -91,23 +85,18 @@ class Network:
 
         return neuron_keys, neighbor_weights
 
-    def Decay(self, n1: str, n2: str, factor: float):
-        # TODO
-        # Implement a method where decay factor is relative to
-        # the tick (T)
+    def Decay(self, weight, factor):
         factor = np.float16(factor)
-        old_weight = self.weightmatrix[n1, n2]
-        self.weightmatrix[n1, n2] -= factor * old_weight
+        weight -= factor * weight
+        return weight
 
-    def Hebbian(self, n1: str, n2: str):
-        # Neurons that fire together,
-        # Connects together.
-        source_act = self.LIFNeurons[n1].V_threshold
-        target_act = self.LIFNeurons[n2].V_threshold
-
+    #def UpdateWeights(self, method: str, n1: str, n2: str):
+    def UpdateWeights(self, n1: str, n2: str):
         old_weight = self.weightmatrix[n1, n2]
+        # TODO IMPLEMENT DIFFERENT WEIGHT UPDATE METHODS.
+        #if method == "emulated":
         if old_weight < np.float16(1.000):
-            new_weight = old_weight + (old_weight * np.float16(0.1))
+            new_weight = old_weight + np.float16(old_weight * np.float16(0.1))
             if new_weight >= np.float16(1.000):
                 new_weight = np.float16(1.000)
                 self.weightmatrix[n1, n2] = new_weight
@@ -117,45 +106,49 @@ class Network:
             new_weight = np.float16(1.000)
             self.weightmatrix[n1, n2] = new_weight
 
-    def step(self, tick, hist_lim, input_current = np.float16(0.000), input_neuron = 0):
+        #elif method == "hebbian":
+            #weight_update += neu.activation * target_neuron.activation
+            #self.weightmatrix[neu.neuron_id][target_neuron.neuron_id] = weight_update
+
+    def NetworkUpdate(self, exception_list=[]):
         neuron_keys = list(self.LIFNeurons.keys())
+
+        # Remove the firing neuron because
+        if len(exception_list) > 0:
+            for ex_neu in exception_list:
+                neuron_keys.remove(ex_neu)
+
         for k in neuron_keys:
-            spike_collector = []
             neu = self.LIFNeurons[k]
-            if neu.neuron_id == input_neuron:
-                neu.update(input_current)
-            else:
-                neu.update(np.float16(0))
+            neu.update(0)
 
-            # Collect IDs of all neurons that spiked.
+    def step(self, input_current = np.float16(0.000), input_neuron = 0):
+        temp_wave = dict()
+        if input_current > np.float16(0.000):
+            neu = self.LIFNeurons[input_neuron]
+            neu.update(input_current)
             if neu.spike_bool:
-                spike_collector.append(neu.neuron_id)
+                neuron_keys, neighbor_ws = self.PrepPropagation(neu.neuron_id)
+                for n in neuron_keys:
+                    self.wave_dict[n] = neighbor_ws[n]
+                    self.UpdateWeights(neu.neuron_id, n)
+            self.NetworkUpdate(exception_list=[input_neuron])
 
-            # Do Global Weight Update
-            for n1 in spike_collector:
-                for n2 in spike_collector:
-                    if n1 != n2:
-                        self.Hebbian(n1, n2)
-            
-            # Decay is only called every 'hist_lim' ticks
-            if tick % hist_lim:
-                # Filter the neurons that did not fire.
-                non_fire_neurons_list = [x for x in neuron_keys if x not in spike_collector]
-                # Decay the neurons that did not fire.
-                for non_fire_id in non_fire_neurons_list:
-                    if "1" not in self.LIFNeurons[non_fire_id].spike_log:
-                        for n2 in non_fire_neurons_list:
-                            if non_fire_id != n2:
-                                self.Decay(non_fire_id, n2, factor=0.25)
-        #print(self.weightmatrix.shape)
+        else:
+            ids = list(self.wave_dict.keys())
+            for i in ids:
+                out_sig = np.float16(10.0) * self.wave_dict[i]
+                neu = self.LIFNeurons[i]
+                neu.update(out_sig)
+                if neu.spike_bool:
+                    neuron_keys, neighbor_ws = self.PrepPropagation(neu.neuron_id)
+                    for n in neuron_keys:
+                        temp_wave[n] = neighbor_ws[n]
+                        #self.UpdateWeights(neu.neuron_id, n)
+            self.wave_dict.clear()
+            self.wave_dict = temp_wave
+            self.NetworkUpdate(exception_list=ids)
         self.weight_log.append(np.copy(self.weightmatrix))
-
-    def SaveWeightTables(self):
-        import pandas as pd
-        cols = list(self.LIFNeurons.keys())
-        for tick, table in tqdm(enumerate(self.weight_log)):
-            frame = pd.DataFrame(table, columns=cols).set_index(cols)
-            frame.to_csv(f"./weight_logs/{tick} WM.csv")
 
     def PlotWeightMatrix(self):
         import numpy as np
@@ -173,14 +166,7 @@ class Network:
         self.weight_log.pop(0)
         def init():
             # Initialize the heatmap (use the first frame as the initial state)
-            heatmap = sns.heatmap(
-                init_frame,
-                square=True,
-                cmap="mako",
-                annot=True,
-                annot_kws={'size': 8},
-                fmt = ".2f"
-                )
+            heatmap = sns.heatmap(init_frame, square=True, cmap="mako", annot=True, annot_kws={'size': 8})
             heatmap.invert_yaxis()
             heatmap.set_xticklabels(heatmap.get_xticklabels(), color="white")
             heatmap.set_yticklabels(heatmap.get_yticklabels(), color="white")
@@ -191,7 +177,7 @@ class Network:
 
         def animate(i):
             data = self.weight_log[i]
-            sns.heatmap(data, square=True, cmap="mako", annot=True, annot_kws={'size': 8}, fmt = ".2f", cbar=False)
+            sns.heatmap(data, square=True, cmap="mako", annot=True, annot_kws={'size': 8}, cbar=False)
 
         anim = animation.FuncAnimation(fig, animate, init_func=init, frames=num_frames-1, repeat=True)
         save_prog = tqdm(total = num_frames)
@@ -214,7 +200,8 @@ class Network:
             fig.title.set_fontsize(20)
             fig.figure.savefig(f"{step}.png", dpi = 1200)
             plt.close()  # Close the figure to release resources
-
+    
+        
     def PrintNetworkV(self):
         neuron_keys = list(self.LIFNeurons.keys())
         for i in neuron_keys:
@@ -241,17 +228,20 @@ if __name__ == "__main__":
     snn.InitNetwork()
     #snn.step(np.float16(10.0), 0)
     #raise
-    for i in range(50):
+    for i in range(200):
         if i % 5 == 0:
-            snn.step(tick = i, hist_lim= 10, input_current= np.float16(10.0), input_neuron= 0)
+            snn.step(np.float16(5.0), 0)
+        elif i % 25 == 0:
+            snn.step(np.float16(5.0), 0)
+        elif i % 50 == 0:
+            snn.step(np.float16(10.0), 0)
         else:
-            snn.step(tick = i, hist_lim= 10, input_current= np.float16(0.00), input_neuron= 0)
+            snn.step(np.float16(0.000), 0)
     #snn.PrintNetworkV()
     #print(snn.LIFNeurons[0].V)
     #snn.PlotNetworkV()
     #snn.SaveWeightFrames()
-    snn.SaveWeightTables()
-    #snn.PlotWeightMatrix()
+    snn.PlotWeightMatrix()
     #print(snn.weight_log[0])
     #print()
     #print(snn.weight_log[-1])
