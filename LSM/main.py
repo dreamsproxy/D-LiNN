@@ -154,7 +154,9 @@ class Network:
         import pandas as pd
         cols = list(self.LIFNeurons.keys())
         for tick, table in tqdm(enumerate(self.weight_log)):
-            frame = pd.DataFrame(table, columns=cols).set_index(cols)
+            frame = pd.DataFrame(table)
+            frame.columns = cols
+            frame.set_index(cols)
             frame.to_csv(f"./weight_logs/{tick} WM.csv")
 
     def PlotWeightMatrix(self):
