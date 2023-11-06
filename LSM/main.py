@@ -26,7 +26,7 @@ class WeightMatrix:
         print(self.matrix)
     
 class LIF:
-    def __init__(self, neuron_id: str) -> None:
+    def __init__(self, neuron_id: str, trim_lim: int = 10) -> None:
         self.neuron_id = neuron_id
         # Define simulation parameters
         self.dT = 0.1  # Time step
@@ -37,10 +37,11 @@ class LIF:
         self.V = list()
         self.spike_log = list()
         self.spike_bool = False
+        self.trim_lim = trim_lim
 
     # Define a function to update the LIF neuron's state
-    def update(self, current_input = np.float16(0), trim_lim: int = 10):
-        if len(self.spike_log) >= trim_lim:
+    def update(self, current_input = np.float16(0)):
+        if len(self.spike_log) >= self.trim_lim:
             del self.spike_log[0]
         else:
             pass
@@ -62,7 +63,7 @@ class LIF:
 
 
 class Network:
-    def __init__(self, n_neurons, w_init = None) -> None:
+    def __init__(self, n_neurons, w_init = None, hist_lim = 10) -> None:
         self.n_neurons = n_neurons
         self.LIFNeurons = dict()
         self.weightsclass = WeightMatrix(n_neurons, w_init)
@@ -70,19 +71,11 @@ class Network:
         self.wave_dict = dict()
         self.weight_log = []
         self.spike_mem = {}
+        self.hist_lim = hist_lim
 
     def InitNetwork(self):
         for i in range(self.n_neurons):
-            #print(i)
-            self.LIFNeurons[i] = LIF(i)
-        print("InitNetwork -> neuron keys")
-        print(list(self.LIFNeurons.keys()))
-        print("\n")
-
-    def GetNeuronWeights(self):
-        for row in range(self.n_neurons):
-            print(f"{row} {self.weightmatrix[row, :]}")
-        print("\n")
+            self.LIFNeurons[i] = LIF(i, trim_lim=self.hist_lim)
 
     def PrepPropagation(self, neuron_id):
         neuron_keys = list(self.LIFNeurons.keys())
@@ -117,7 +110,7 @@ class Network:
             new_weight = np.float16(1.000)
             self.weightmatrix[n1, n2] = new_weight
 
-    def step(self, tick, hist_lim, input_current = np.float16(0.000), input_neuron = 0):
+    def step(self, tick,  input_current = np.float16(0.000), input_neuron = 0):
         neuron_keys = list(self.LIFNeurons.keys())
         for k in neuron_keys:
             spike_collector = []
@@ -138,7 +131,7 @@ class Network:
                         self.Hebbian(n1, n2)
             
             # Decay is only called every 'hist_lim' ticks
-            if tick % hist_lim:
+            if tick % self.hist_lim:
                 # Filter the neurons that did not fire.
                 non_fire_neurons_list = [x for x in neuron_keys if x not in spike_collector]
                 # Decay the neurons that did not fire.
@@ -146,14 +139,14 @@ class Network:
                     if "1" not in self.LIFNeurons[non_fire_id].spike_log:
                         for n2 in non_fire_neurons_list:
                             if non_fire_id != n2:
-                                self.Decay(non_fire_id, n2, factor=0.25)
+                                self.Decay(non_fire_id, n2, factor=0.001)
         #print(self.weightmatrix.shape)
         self.weight_log.append(np.copy(self.weightmatrix))
 
     def SaveWeightTables(self):
         import pandas as pd
         cols = list(self.LIFNeurons.keys())
-        for tick, table in tqdm(enumerate(self.weight_log)):
+        for tick, table in tqdm(enumerate(self.weight_log), total=len(self.weight_log)):
             frame = pd.DataFrame(table)
             frame.columns = cols
             frame.set_index(cols)
@@ -239,15 +232,17 @@ class Network:
 
 
 if __name__ == "__main__":
-    snn = Network(n_neurons = 10, w_init="random")
+    snn = Network(n_neurons = 10, w_init="random", hist_lim=20)
     snn.InitNetwork()
     #snn.step(np.float16(10.0), 0)
     #raise
-    for i in range(50):
-        if i % 5 == 0:
-            snn.step(tick = i, hist_lim= 10, input_current= np.float16(10.0), input_neuron= 0)
+    for i in tqdm(range(100)):
+        if i % 10 == 0:
+            snn.step(tick = i, input_current= np.float16(10.0), input_neuron= 0)
+        if i % 30 == 0:
+            snn.step(tick = i, input_current= np.float16(50.0), input_neuron= 0)
         else:
-            snn.step(tick = i, hist_lim= 10, input_current= np.float16(0.00), input_neuron= 0)
+            snn.step(tick = i, input_current= np.float16(0.00), input_neuron= 0)
     #snn.PrintNetworkV()
     #print(snn.LIFNeurons[0].V)
     #snn.PlotNetworkV()
