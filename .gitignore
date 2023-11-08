@@ -4,3 +4,4 @@ Learning/
 n-mnist/
 prototype**/
 LSM/weight_logs/*WM.csv
+**.npy
