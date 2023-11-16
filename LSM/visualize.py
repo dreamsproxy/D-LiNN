@@ -52,44 +52,36 @@ def WeightMatrix(path = "./weight_logs.npy"):
 def NeuronSpikes(file_type = ".npy"):
     import plotly.express as px
     spikes = np.load("./neuron_spike_logs.npy")
-    v_logs = np.load("./neuron_V_logs.npy")
-    
+    with open("ids.txt", "r") as infile:
+        ids = infile.read().split(",")
+
     # Convert to dataframe
-    spikes_df = pd.DataFrame(np.swapaxes(spikes, 0, 1), columns=[i for i in range(spikes.shape[0])])
-    spikes_df.set_index([i for i in range(spikes.shape[0])])
+    spikes_df = pd.DataFrame(np.swapaxes(spikes, 0, 1), columns=ids)
+    spikes_df.set_index(ids)
     print(spikes_df.head())
 
-    fig = px.line(spikes_df, title="Neuron Spike Chart")
+    fig = px.line(spikes_df, title="Neuron Spike")
     fig.show()
 
 def NeuronPotentials():
-    import plotly as plty
-    v_logs = np.load("./neuron_V_logs.npy")
-    v_logs = (v_logs-np.min(v_logs))/(np.max(v_logs)-np.min(v_logs))
-    #v_logs = np.swapaxes(v_logs, 0, 1)
+    import plotly.express as px
+    potentials = np.load("./neuron_V_logs.npy")
+    with open("ids.txt", "r") as infile:
+        ids = infile.read().split(",")
+
     # Convert to dataframe
-    v_df = pd.DataFrame(v_logs, columns=[i for i in range(v_logs.shape[1])])
-    v_df.set_index([i for i in range(v_logs.shape[0])])
+    potentials_df = pd.DataFrame(np.swapaxes(potentials, 0, 1), columns=ids)
+    potentials_df.set_index(ids)
+    print(potentials_df.head())
 
-    
-    fig = plty.tools.make_subplots(rows=1, cols=2)
-    hm1 = go.Figure(
-        data = go.Heatmap(
-            x = v_df.columns,
-            z = v_df.values,
-            y = v_df.index,
-            colorscale="viridis"
-        )
-    ).update_layout(
-        xaxis = {"title": "Tick","side": "top"},
-        yaxis = {"title": "Neuron ID"}
+    fig = px.line(potentials_df, title="Neuron Potentials")
+    fig.update_layout(
+        yaxis={"title": "Voltage", "tickangle":90},
+        xaxis={"title": "Ticks", "side": "bottom"},
+        title_x=0.5,
+
     )
-    fig.add_trace(hm1.select_traces())
-
     fig.show()
-    raise
-    raise
-
 
 def Network(path = "./weight_logs.npy"):
     import igraph as ig
@@ -173,5 +165,5 @@ def Network(path = "./weight_logs.npy"):
     fig.show()
 if __name__ == "__main__":
     #NeuronSpikes()
-    #NeuronPotentials()
-    Network()
+    NeuronPotentials()
+    #Network()
