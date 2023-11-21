@@ -9,7 +9,7 @@
    - Implementation of AdExLIF neurons for capturing complex spatiotemporal dynamics.
    - Description of the self-optimization mechanism inspired by biological principles.
 
-**3. Self-Optimizing Love:**
+**3. Self-Optimizing:**
    - Elaboration on the concept of self-optimization within the neural network.
    - Discussion on how the model can adapt and evolve its connectivity based on learning experiences.
    - Theoretical foundation for the model's ability to optimize for patterns associated with positive reinforcement, metaphorically referred to as "love."
