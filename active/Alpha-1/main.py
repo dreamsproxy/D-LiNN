@@ -5,7 +5,7 @@ import os
 import multiprocessing
 import sensors
 import pandas as pd
-
+from time import process_time
 class LIF:
     def __init__(self, neuron_id: str, lif_init: str = "default", trim_lim: int = 10, verbose_log: bool = False) -> None:
         self.neuron_id = neuron_id
@@ -175,17 +175,25 @@ class Network:
         return cache_dict
 
     def step(self, input_current = np.float16(0.0000), input_neuron:str = "0", fired_input_keys = []):
-        self.step_debug_log.append("\n\nStep [START]")
+        if self.verbose_logging:
+            self.step_debug_log.append("\n\nStep [START]")
+
         if input_current != np.float16(0.0000):
-            self.step_debug_log.append("\tInput Current Detected!")
+            if self.verbose_logging:
+                self.step_debug_log.append("\tInput Current Detected!")
             input_current = input_current / np.pi
         else:
-            self.step_debug_log.append("\tNo Input\n")
+            if self.verbose_logging:
+                self.step_debug_log.append("\tNo Input\n")
         
         fired_neuron_keys = fired_input_keys
         signal_keys = list(self.signal_cache.keys())
-        signal_keys = [s_k for s_k in signal_keys if "Audio" not in s_k]
-        filtered_keys = [n_k for n_k in self.neuron_keys if "Audio" not in n_k]
+        if self.audio_input:
+            signal_keys = [s_k for s_k in signal_keys if "Audio" not in s_k]
+            filtered_keys = [n_k for n_k in self.neuron_keys if "Audio" not in n_k]
+        if self.image_input:
+            signal_keys = [s_k for s_k in signal_keys if "Pixel" not in s_k]
+            filtered_keys = [n_k for n_k in self.neuron_keys if "Pixel" not in n_k]
         # We need to skip audio sensors as it is always ran first
         self.step_debug_log.append(f"\tAll Neuron Keys: {self.neuron_keys}")
         self.step_debug_log.append(f"\tBacklog Signal Keys: {signal_keys}\n")
@@ -198,55 +206,77 @@ class Network:
                 neu = self.LIFNeurons[r_k]
                 if str(r_k) == str(input_neuron):
                     neu.update(input_current+recieved_signal)
-                    self.step_debug_log.append(f"\t\tUpdate: input neuron {r_k}")
+                    if self.verbose_logging:
+                        self.step_debug_log.append(f"\t\tUpdate: input neuron {r_k}")
                 else:
-                    self.step_debug_log.append(f"\t\tUpdate: neuron {r_k}")
+                    if self.verbose_logging:
+                        self.step_debug_log.append(f"\t\tUpdate: neuron {r_k}")
                     neu.update(np.float16(recieved_signal))
 
                 if neu.spike_bool:
                     fired_neuron_keys.append(r_k)
-                self.step_debug_log.append(f"\t\t\tRemoved: {r_k} from {filtered_keys}")
+                if self.verbose_logging:
+                    self.step_debug_log.append(f"\t\t\tRemoved: {r_k} from {filtered_keys}")
                 filtered_keys.remove(r_k)
 
-        self.step_debug_log.append(f"\tBacklog [ENDED]")
-        self.step_debug_log.append(f"\n\tNormal Step [START]")
+        if self.verbose_logging:
+            self.step_debug_log.append(f"\tBacklog [ENDED]")
+            self.step_debug_log.append(f"\n\tNormal Step [START]")
         for k in filtered_keys:
-            self.step_debug_log.append(f"")
+            if self.verbose_logging:
+                self.step_debug_log.append(f"")
             neu = self.LIFNeurons[k]
             if str(k) == str(input_neuron):
-                self.step_debug_log.append(f"\t\tUpdate: input neuron {k}")
+                if self.verbose_logging:
+                    self.step_debug_log.append(f"\t\tUpdate: input neuron {k}")
                 neu.update(input_current)
             else:
-                self.step_debug_log.append(f"\t\tUpdate: neuron {k}")
+                if self.verbose_logging:
+                    self.step_debug_log.append(f"\t\tUpdate: neuron {k}")
                 neu.update(np.float16(0))
+
             if neu.spike_bool:
                 fired_neuron_keys.append(k)
 
         if len(fired_neuron_keys) >= 1:
-            self.step_debug_log.append(f"\t\tThese Neurons Fired: {fired_neuron_keys}")
+            if self.verbose_logging:
+                self.step_debug_log.append(f"\n\tThese Neurons Fired: {fired_neuron_keys}")
             self.signal_cache = self.PrepSignals(fired_neuron_keys)
         else:
-            self.step_debug_log.append(f"\t\tNO Neurons Fired: {fired_neuron_keys}")
+            if self.verbose_logging:
+                self.step_debug_log.append(f"\t\tNO Neurons Fired: {fired_neuron_keys}")
+        if self.verbose_logging:
+            self.step_debug_log.append(f"\tNormal Step [ENDED]")
+            self.step_debug_log.append(f"\n\tGLOBAL HEBBIAN WEIGHT OPT [START]")
 
-        self.step_debug_log.append(f"\tNormal Step [ENDED]")
-
-        self.step_debug_log.append(f"\n\tGLOBAL HEBBIAN WEIGHT OPT [START]")
+        hebb_start = process_time()
         # Do Global Weight Update
         for k1 in self.neuron_keys:
             for k2 in self.neuron_keys:
                 if k1 != k2:
                     self.Hebbian(k1, k2)
-        self.step_debug_log.append(f"\tGLOBAL HEBBIAN WEIGHT OPT [ENDED]")
+        hebb_end = process_time()
+        if self.verbose_logging:
+            self.step_debug_log.append(f"\tGLOBAL HEBBIAN WEIGHT OPT [ENDED]")
+            self.step_debug_log.append(f"\t\tTOOK {hebb_end - hebb_start}")
+            self.step_debug_log.append(f"\n\tWeight Normalization [START]")
 
-        self.step_debug_log.append(f"\n\tWeight Normalization [START]")
+        norm_start = process_time()
         # Normalize the weights to prevent uncontrolled growth
         self.weight_matrix /= np.max(np.abs(self.weight_matrix))
         # Scale the weights to keep it between 0.0 and 1.0
         self.weight_matrix = (self.weight_matrix-np.min(self.weight_matrix))/(np.max(self.weight_matrix)-np.min(self.weight_matrix))
-        self.step_debug_log.append(f"\tWeight Normalization [ENDED]")
+        norm_end = process_time()
+        if self.verbose_logging:
+            self.step_debug_log.append(f"\tWeight Normalization [ENDED]")
+            self.step_debug_log.append(f"\t\tTOOK {norm_end - norm_start}")
 
         # Copy weight matrix to a logger
+        if self.verbose_logging:
+            self.step_debug_log.append(f"\tWeight Logging [START]")
         self.weight_log.append(np.copy(self.weight_matrix.to_numpy()))
+        if self.verbose_logging:
+            self.step_debug_log.append(f"\tWeight Logging [ENDED]")
 
         # NOTE: WARNING START
         #
@@ -256,11 +286,12 @@ class Network:
         # NOTE: WARNING END
         del fired_neuron_keys
         del filtered_keys
-        self.step_debug_log.append(f"Step [END]")
+        if self.verbose_logging:
+            self.step_debug_log.append(f"Step [END]")
 
     def step_audio(self, input_bands: list=[]):
         fired_cache = []
-        for input_id in range(self.audio_sensor.n_bands):
+        for input_id in tqdm(range(self.audio_sensor.n_bands)):
             band_freq = input_bands[input_id]
             input_id = str(input_id)
             neu = self.LIFNeurons[f"Audio {input_id}"]
@@ -282,9 +313,10 @@ class Network:
     def step_vision(self, current_vector: list):
         fired_cache = []
         for input_id in range(self.image_sensor.n_kernels):
-            input_id = str(input_id)
-            pixel = current_vector[input_id]
+            pixel_index = input_id
+            pixel = current_vector[pixel_index]
             
+            input_id = str(input_id)
             neu = self.LIFNeurons[f"Pixel {input_id}"]
             neu.update(pixel)
             if neu.spike_bool:
@@ -296,10 +328,14 @@ class Network:
         current_data = self.image_sensor.ConvertToCurrent(image)
         current_vector = self.image_sensor.ToVector(current_data)
         for i in tqdm(range(ticks)):
+            #print("VISION STEP START")
             fired_cache = snn.step_vision(current_vector)
+            #print("VISION STEP ENDED")
             input_data = np.float16(-55.0)
+            #print("NORMAL STEP START")
             snn.step(input_current = input_data, input_neuron= "",
                      fired_input_keys=fired_cache)
+            #print("NORMAL STEP ENDED")
 
     def SaveWeightTables(self, mode = "npy"):
         if mode == "npy":
@@ -345,12 +381,12 @@ if __name__ == "__main__":
         image_input=True)
     snn.InitNetwork()
     print(snn.neuron_keys)
-    snn.RunVision(100)
-    snn.SaveWeightTables()
-    snn.SaveNeuronSpikes()
-    snn.SaveNeuronPotentials()
+    snn.RunVision(1)
+    #snn.SaveWeightTables()
+    #snn.SaveNeuronSpikes()
+    #snn.SaveNeuronPotentials()
     # Dump cols and rows
     with open("ids.txt", "w") as outfile:
         outfile.write(",".join(snn.neuron_keys))
-    #for debug_msg in snn.step_debug_log:
-    #    print(debug_msg)
+    for debug_msg in snn.step_debug_log:
+        print(debug_msg)

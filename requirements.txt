@@ -5,6 +5,7 @@ nest-asyncio
 numpy
 opencv-python
 opencv-contrib-python
+pandas
 pyaudio
 scipy
 scikit-learn
