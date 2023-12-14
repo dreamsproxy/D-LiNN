@@ -3,4 +3,5 @@ This demo shows how we can simulate the development of an organic structure, sim
 Utilizing some swarm rules:
 1. Node spacing
 2. Node's purpose's efficiency
+2. Node's purpose's efficiency
 1. Check
