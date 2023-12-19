@@ -1,6 +1,5 @@
 import numpy as np
 from tqdm import tqdm
-import ffmpeg
 class WeightMatrix:
     def __init__(self, n_neurons, w_init = "zeros"):
         self.n_neurons = n_neurons
@@ -161,28 +160,19 @@ class Network:
         # Set the background color for the plot
         sns.set(rc={'axes.facecolor':'#002439', 'figure.facecolor':'#002439'})
 
-        # extract initial frame
-        init_frame = self.weight_log[0]
-        self.weight_log.pop(0)
-        def init():
-            # Initialize the heatmap (use the first frame as the initial state)
-            heatmap = sns.heatmap(init_frame, square=True, cmap="mako", annot=True, annot_kws={'size': 8})
-            heatmap.invert_yaxis()
+        init = True
+        for iter, step in tqdm(enumerate(self.weight_log), total=len(self.weight_log)):
+            if init:
+                heatmap = sns.heatmap(step, square=True, cmap="mako", annot=True, annot_kws={'size': 8}, cbar = True)
+            else:
+                heatmap = sns.heatmap(step, square=True, cmap="mako", annot=True, annot_kws={'size': 8}, cbar = False)
             heatmap.set_xticklabels(heatmap.get_xticklabels(), color="white")
             heatmap.set_yticklabels(heatmap.get_yticklabels(), color="white")
             heatmap.set_title("Weight Matrix").set_color("white")
             heatmap.title.set_fontsize(20)
-
-        fig = plt.figure()
-
-        def animate(i):
-            data = self.weight_log[i]
-            sns.heatmap(data, square=True, cmap="mako", annot=True, annot_kws={'size': 8}, cbar=False)
-
-        anim = animation.FuncAnimation(fig, animate, init_func=init, frames=num_frames-1, repeat=True)
-        save_prog = tqdm(total = num_frames)
-        
-        anim.save("mat.gif", fps=2, progress_callback=save_prog.update(1))
+            fig = heatmap.get_figure()
+            fig.savefig(f"frame {iter}.png", dpi = 800) 
+            init = False
 
     
     def SaveWeightFrames(self):
@@ -228,7 +218,7 @@ if __name__ == "__main__":
     snn.InitNetwork()
     #snn.step(np.float16(10.0), 0)
     #raise
-    for i in range(200):
+    for i in range(10):
         if i % 5 == 0:
             snn.step(np.float16(5.0), 0)
         elif i % 25 == 0:
