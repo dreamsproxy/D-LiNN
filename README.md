@@ -1,15 +1,37 @@
-# D-LiNN
-## Decentralized Linear Spiking Neural Network
-<br>
+**Project Outline: Omnidirectional LIF and AdExLIF Neurons in a Liquid Spiking Neural Network**
 
-## Idea:
-given a set of distributed layers of an LSM, a production of meaningful data representation, generalization, as well as patten generalization of through time-dependent spike-timings may produce high-dimensional data points.
+**1. Introduction:**
+   - Brief overview of Liquid Spiking Neural Networks (LSNN) and their applications.
+   - Introduction to the integration of Omnidirectional Leaky Integrate-and-Fire (LIF) and Adaptive Exponential Integrate-and-Fire (AdExLIF) neurons for enhanced functionality.
 
-Suppose you have a 1024 * 1024 * 1024 reservoir filled with detector neurons
-When you supply a data cluster, be it images, binary streams, 3D objects or scatter plots, it will cause a "ripple" effect from the center of the 1024 * 1024 * 1024 reservoir
-Measuring the ripples from all 6 faces of the reservoir may produce a high density 3-dimensional data.
+**2. Neuronal Model Integration:**
+   - Explanation of the incorporation of Omnidirectional LIF neurons for a broader receptive field.
+   - Implementation of AdExLIF neurons for capturing complex spatiotemporal dynamics.
+   - Description of the self-optimization mechanism inspired by biological principles.
 
-To increase the output data's dimensionality, simply reorganize the reservoir of a ico-sphere, where the faces of each subdivision are directly linked to each dimension of a data output
+**3. Self-Optimizing:**
+   - Elaboration on the concept of self-optimization within the neural network.
+   - Discussion on how the model can adapt and evolve its connectivity based on learning experiences.
+   - Theoretical foundation for the model's ability to optimize for patterns associated with positive reinforcement, metaphorically referred to as "love."
 
-k-means clustering of the detector neurons will be used for data reorganization.
-"face-neurons" will be denoised through a DBSCAN algorithm.
+**4. Use Cases:**
+   - **Real-time Temporal-Spatial Data Processing:**
+     - Detailed exploration of the application in processing dynamic spatiotemporal information in real-time.
+     - Examples of use in scenarios like video analysis, sensor networks, and dynamic environment monitoring.
+   - **Pattern Recognition and Anomaly Detection:**
+     - Utilization of the LSNN for recognizing patterns in complex data streams.
+     - Potential applications in cybersecurity, identifying anomalies in real-world systems.
+
+**5. Technical Challenges and Solutions:**
+   - Addressing computational complexities associated with implementing Omnidirectional LIF and AdExLIF neurons.
+   - Strategies for managing self-optimization to avoid convergence issues.
+
+**6. Future Directions:**
+   - Exploration of scalability for larger neural networks.
+   - Investigation into applications beyond real-time temporal-spatial data processing.
+
+**7. Conclusion:**
+   - Recapitulation of the project's objectives and potential impact.
+   - Emphasis on the versatility of LSNN with Omnidirectional LIF and AdExLIF neurons in addressing complex real-world problems.
+
+*Note: This project aims to contribute to the field of neuromorphic computing, particularly in the realm of spiking neural networks, offering potential breakthroughs in real-time data processing and self-optimization.*

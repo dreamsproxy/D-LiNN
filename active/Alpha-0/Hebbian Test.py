@@ -25,20 +25,28 @@ class WeightMatrix:
         print(self.matrix)
     
 class LIF:
-    def __init__(self, neuron_id, T = 100) -> None:
+    def __init__(self, neuron_id: str, T_range: int) -> None:
         self.neuron_id = neuron_id
         # Define simulation parameters
         self.dT = 0.1  # Time step
-        self.tau_m = 10.0  # Membrane time constant
-        self.V_reset = 0.0  # Reset voltage
-        self.V_threshold = 1.0  # Spike threshold
+        self.tau_m = np.float16(10.0)  # Membrane time constant
+        self.V_reset = np.float16(0.0)  # Reset voltage
+        self.V_threshold = np.float16(1.0)  # Spike threshold
 
         self.V = list()
         self.spikes = list()
         self.spike_bool = False
+        self.T_range = T_range
+
+    def trim_logs(self):
+        # Trim spikes according to T Range
+        # Invert Read the list
+        if len(self.spikes) >= self.T_range:
+            del self.spikes[0]
 
     # Define a function to update the LIF neuron's state
-    def update(self, current_input = 0):
+    def update(self, current_input = np.float16(0)):
+        self.trim_logs()
         # If the voltage log is empty, assume it is at 0.0, then perform calculation
         if len(self.V) < 1:
             delta_V = (current_input - np.float16(0.000)) / self.tau_m
@@ -55,6 +63,7 @@ class LIF:
             self.spikes.append(0)
             self.spike_bool = False
 
+
 class Network:
     def __init__(self, n_neurons, w_init = None) -> None:
         self.n_neurons = n_neurons
@@ -63,6 +72,7 @@ class Network:
         self.weightmatrix = self.weightsclass.matrix
         self.wave_dict = dict()
         self.weight_log = []
+        self.spike_mem = {}
 
     def InitNetwork(self):
         for i in range(self.n_neurons):
@@ -89,11 +99,8 @@ class Network:
         weight -= factor * weight
         return weight
 
-    #def UpdateWeights(self, method: str, n1: str, n2: str):
     def UpdateWeights(self, n1: str, n2: str):
         old_weight = self.weightmatrix[n1, n2]
-        # TODO IMPLEMENT DIFFERENT WEIGHT UPDATE METHODS.
-        #if method == "emulated":
         if old_weight < np.float16(1.000):
             new_weight = old_weight + np.float16(old_weight * np.float16(0.1))
             if new_weight >= np.float16(1.000):
@@ -105,14 +112,35 @@ class Network:
             new_weight = np.float16(1.000)
             self.weightmatrix[n1, n2] = new_weight
 
-        #elif method == "hebbian":
-            #weight_update += neu.activation * target_neuron.activation
-            #self.weightmatrix[neu.neuron_id][target_neuron.neuron_id] = weight_update
+    def Hebbian(self, n1: str, n2: str, T_range: tuple):
+        # Neurons that fire together,
+        # Connects together.
+        # Would this method be problematic if it were called
+        #   In or out of network update?
 
+        #source_act = self.LIFNeurons[n1].V_threshold / (self.LIFNeurons[n2].tau_m / np.pi())
+        #target_act = self.LIFNeurons[n2].V_threshold / (self.LIFNeurons[n2].tau_m / np.pi())
+        # get neuron thresholds
+        source_act = self.LIFNeurons[n1].V_threshold
+        target_act = self.LIFNeurons[n2].V_threshold
+
+        old_weight = self.weightmatrix[n1, n2]
+        if old_weight < np.float16(1.000):
+            new_weight = old_weight + ((source_act * target_act) * np.float16(0.01))
+            if new_weight >= np.float16(1.000):
+                new_weight = np.float16(1.000)
+                self.weightmatrix[n1, n2] = new_weight
+            elif new_weight < np.float16(1.0):
+                self.weightmatrix[n1, n2] = new_weight
+        elif old_weight >= np.float16(1.000):
+            new_weight = np.float16(1.000)
+            self.weightmatrix[n1, n2] = new_weight
+
+    
     def NetworkUpdate(self, exception_list=[]):
         neuron_keys = list(self.LIFNeurons.keys())
-
-        # Remove the firing neuron because
+        # Remove the firing neuron because it should not be calculated twice
+        # However it the input neuron did not
         if len(exception_list) > 0:
             for ex_neu in exception_list:
                 neuron_keys.remove(ex_neu)
@@ -123,14 +151,21 @@ class Network:
 
     def step(self, input_current = np.float16(0.000), input_neuron = 0):
         temp_wave = dict()
+        # Check if there is input current
         if input_current > np.float16(0.000):
+            # If there is input current
+            # Access input neuron
             neu = self.LIFNeurons[input_neuron]
+            # Update input neuron with input current at current T (step)
             neu.update(input_current)
+            # Check if input neuron fired
             if neu.spike_bool:
+                # If input neuron fired
+                # Prepare for signal spread
                 neuron_keys, neighbor_ws = self.PrepPropagation(neu.neuron_id)
                 for n in neuron_keys:
                     self.wave_dict[n] = neighbor_ws[n]
-                    self.UpdateWeights(neu.neuron_id, n)
+                    self.UpdateWeights(n1 = neu.neuron_id, n2 = n)
             self.NetworkUpdate(exception_list=[input_neuron])
 
         else:
@@ -143,7 +178,7 @@ class Network:
                     neuron_keys, neighbor_ws = self.PrepPropagation(neu.neuron_id)
                     for n in neuron_keys:
                         temp_wave[n] = neighbor_ws[n]
-                        #self.UpdateWeights(neu.neuron_id, n)
+                        self.UpdateWeights(neu.neuron_id, n)
             self.wave_dict.clear()
             self.wave_dict = temp_wave
             self.NetworkUpdate(exception_list=ids)
