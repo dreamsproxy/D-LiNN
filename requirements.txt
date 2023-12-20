@@ -1,11 +1,14 @@
+vispy
 librosa
 matplotlib
 mpmath
 nest-asyncio
+networkx
 numpy
 opencv-python
 opencv-contrib-python
 pandas
+plotly
 pyaudio
 scipy
 scikit-learn

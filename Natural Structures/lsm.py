@@ -96,13 +96,20 @@ class Network:
         
         self.verbose_logging = verbose_logging
 
-    def InitNetwork(self):
-        for i in range(self.n_neurons):
-            self.LIFNeurons[str(i)] = LIF(
-                i, trim_lim=self.hist_lim, lif_init = self.lif_init,
-                verbose_log=self.verbose_logging)
+    def InitNetwork(self, custom_keys):
+        if custom_keys != None:
+            for k in custom_keys:
+                self.LIFNeurons[str(k)] = LIF(
+                    k, trim_lim=self.hist_lim, lif_init = self.lif_init,
+                    verbose_log=self.verbose_logging)
+            self.neuron_keys = custom_keys
+        else:
+            for i in range(self.n_neurons):
+                self.LIFNeurons[str(i)] = LIF(
+                    i, trim_lim=self.hist_lim, lif_init = self.lif_init,
+                    verbose_log=self.verbose_logging)
 
-        self.neuron_keys = list(self.LIFNeurons.keys())
+            self.neuron_keys = list(self.LIFNeurons.keys())
 
         self.weightsclass = WeightMatrix(self.neuron_keys, self.w_init)
         self.weightsclass.PrintMatrix()
@@ -126,6 +133,7 @@ class Network:
 
     def PrepSignals(self, fired_list:list):
         cache_dict = dict()
+
         for fired_k in fired_list:
             for other_k in self.neuron_keys:
                 if fired_k != other_k:
@@ -135,7 +143,7 @@ class Network:
 
         return cache_dict
 
-    def step(self, input_current = np.float16(0.0000), input_neuron:str = "0", fired_input_keys = []):
+    def step(self, input_current = np.float16(0.0000), input_neurons:list = ["0"], fired_input_keys = []):
         if input_current != np.float16(0.0000):
             input_current = input_current / np.pi
 
@@ -147,7 +155,7 @@ class Network:
                 r_k = receiver_neuron
                 recieved_signal = self.signal_cache[str(r_k)]
                 neu = self.LIFNeurons[r_k]
-                if str(r_k) == str(input_neuron):
+                if any(str(r_k) == str(in_neu) for in_neu in input_neurons):
                     neu.update(input_current+recieved_signal)
                 else:
                     neu.update(np.float16(recieved_signal))
@@ -156,7 +164,7 @@ class Network:
 
         for k in self.neuron_keys:
             neu = self.LIFNeurons[k]
-            if str(k) == str(input_neuron):
+            if any(str(k) == str(in_neu) for in_neu in input_neurons):
                 neu.update(input_current)
             else:
                 neu.update(np.float16(0))

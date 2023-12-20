@@ -290,7 +290,6 @@ class Network:
         img = cv2.imread("sample.png", cv2.IMREAD_GRAYSCALE)
         img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
         
-        
         current_data = utils.to_current(img)
         current_vector = utils.to_vector(current_data)
         for i in tqdm(range(ticks)):
