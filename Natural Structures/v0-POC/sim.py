@@ -12,7 +12,7 @@ import utils
 
 
 # Assume we want to simulate 256 hidden neurons in a 256^3 environment.
-nodes = 128
+nodes = 16
 env_size = (256, 256, 256)
 sim_space = np.zeros(env_size)
 
@@ -51,25 +51,27 @@ with open("coordinates.json", "w") as outfile:
 
 network = lsm.Network(
     len(node_keys),
-    lif_init="random",
+    lif_init="default",
     w_init="zeros",
     hist_lim=17,
     verbose_logging=True)
 network.InitNetwork(custom_keys = node_keys)
 network.weight_matrix = weight_matrix
 
-sim_ticks = 100
+sim_ticks = 2
 
-input_data = np.float16(-55.0)
-stream_points = seed_generators.fibonacci(sim_ticks)
+input_data = np.float16(1.0)
+stream_points = [i for i in range(0, sim_ticks, 3)]
 
 for i in tqdm(range(sim_ticks)):
     if i in stream_points:
         network.step(input_current = input_data, input_neurons = input_plane)
     else:
-        network.step(input_current = np.float16(-75.0), input_neurons = input_plane)
+        network.step(input_current = np.float16(0.0), input_neurons = input_plane)
 
 network.SaveWeightTables()
+network.SaveNeuronPotentials()
+network.SaveNeuronSpikes()
 with open("keys.txt", "w") as outfile:
     for i in node_keys:
         outfile.writelines(i)

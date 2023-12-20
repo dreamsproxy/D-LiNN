@@ -67,7 +67,6 @@ nodes = list(coordinates.keys())
 node_positions = np.array(list(coordinates.values()))
 
 edges = []
-#print(list(nested_weights.items())[0][0])
 
 for source, targets in nested_weights.items():
     for target, weight in targets.items():
