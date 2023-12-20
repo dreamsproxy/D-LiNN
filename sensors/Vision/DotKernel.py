@@ -6,7 +6,6 @@ import plotly
 from sensor import Vision
 from sklearn.preprocessing import minmax_scale
 
-
 def Kernel(tiles: list, kernel: tuple, bias: float):
     kernel_values = np.array([
         [0.0, 0.5, 0.5, 0.0],

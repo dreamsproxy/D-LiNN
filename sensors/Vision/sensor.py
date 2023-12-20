@@ -54,6 +54,3 @@ class Vision:
             img[cY:h, 0:cX],
             img[cY:h, cX:w]]
         return micro_tiles
-
-    def DotKernel(self, tile):
-        pass

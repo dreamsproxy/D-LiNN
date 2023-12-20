@@ -6,6 +6,7 @@ import multiprocessing
 import sensors
 import pandas as pd
 from time import process_time
+import Conv2D
 import utils
 class LIF:
     def __init__(self, neuron_id: str, lif_init: str = "default", trim_lim: int = 10, verbose_log: bool = False) -> None:
@@ -111,11 +112,20 @@ class Network:
         self.step_debug_log = []
 
     def InitNetwork(self):
+        self.image_sensor = Conv2D.Conv2D(
+            resolution = 256, kernel_size = 3)
+
+        for i in range(self.image_sensor.n_sensors):
+            self.LIFNeurons[f"Alpha {i}"] = LIF(
+                i, trim_lim=self.hist_lim, lif_init = self.lif_init,
+                verbose_log=self.verbose_logging)
+
         for i in range(self.n_neurons):
             self.LIFNeurons[str(i)] = LIF(
                 i, trim_lim=self.hist_lim, lif_init = self.lif_init,
                 verbose_log=self.verbose_logging)
 
+        self.n_neurons += self.image_sensor.n_sensors
         self.neuron_keys = list(self.LIFNeurons.keys())
 
         self.weightsclass = WeightMatrix(self.neuron_keys, self.w_init)
@@ -236,23 +246,62 @@ class Network:
             self.step_debug_log.append(f"\n\tWeight Normalization [START]")
 
         norm_start = process_time()
+        # Normalize the weights to prevent uncontrolled growth
         self.weight_matrix /= np.max(np.abs(self.weight_matrix))
+        # Scale the weights to keep it between 0.0 and 1.0
         self.weight_matrix = (self.weight_matrix-np.min(self.weight_matrix))/(np.max(self.weight_matrix)-np.min(self.weight_matrix))
         norm_end = process_time()
         if self.verbose_logging:
             self.step_debug_log.append(f"\tWeight Normalization [ENDED]")
             self.step_debug_log.append(f"\t\tTOOK {norm_end - norm_start}")
 
+        # Copy weight matrix to a logger
         if self.verbose_logging:
             self.step_debug_log.append(f"\tWeight Logging [START]")
         self.weight_log.append(np.copy(self.weight_matrix.to_numpy()))
         if self.verbose_logging:
             self.step_debug_log.append(f"\tWeight Logging [ENDED]")
 
+        # NOTE: WARNING START
+        #
+        # NOTE: When running on long periods of time!
+        # NOTE: spawn a separate process to write the logs!
+        #
+        # NOTE: WARNING END
         del fired_neuron_keys
         del filtered_keys
         if self.verbose_logging:
             self.step_debug_log.append(f"Step [END]")
+
+    def step_vision(self, current_vector: list):
+        fired_cache = []
+        for input_id in range(self.image_sensor.n_kernels):
+            pixel_index = input_id
+            pixel = current_vector[pixel_index]
+            input_id = str(input_id)
+            neu = self.LIFNeurons[f"Pixel {input_id}"]
+            neu.update(pixel)
+            if neu.spike_bool:
+                fired_cache.append(f"Pixel {input_id}")
+        return fired_cache
+
+    def RunVision(self, ticks):
+        import cv2
+        img = cv2.imread("sample.png", cv2.IMREAD_GRAYSCALE)
+        img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
+        
+        
+        current_data = utils.to_current(img)
+        current_vector = utils.to_vector(current_data)
+        for i in tqdm(range(ticks)):
+            #print("VISION STEP START")
+            fired_cache = snn.step_vision(current_vector)
+            #print("VISION STEP ENDED")
+            input_data = np.float16(-55.0)
+            #print("NORMAL STEP START")
+            snn.step(input_current = input_data, input_neuron= "",
+                     fired_input_keys=fired_cache)
+            #print("NORMAL STEP ENDED")
 
     def SaveWeightTables(self, mode = "npy"):
         if mode == "npy":
@@ -275,6 +324,8 @@ class Network:
         np.save("./neuron_V_logs.npy", format_cache)
 
     def SaveNeuronSpikes(self):
+        # Check if the neurons are logged verbosely
+        len(self.LIFNeurons["0"].full_spike_log)
         if len(self.LIFNeurons["0"].full_spike_log) <= 1:
             e = Exception("Neurons were not initialized with 'verbose_log' to 'True' !")
             raise e
@@ -296,9 +347,9 @@ if __name__ == "__main__":
     snn.InitNetwork()
     print(snn.neuron_keys)
     snn.RunVision(1)
-    snn.SaveWeightTables()
-    snn.SaveNeuronSpikes()
-    snn.SaveNeuronPotentials()
+    #snn.SaveWeightTables()
+    #snn.SaveNeuronSpikes()
+    #snn.SaveNeuronPotentials()
     # Dump cols and rows
     with open("ids.txt", "w") as outfile:
         outfile.write(",".join(snn.neuron_keys))
