@@ -8,7 +8,7 @@ from tqdm import tqdm
 def to_current(img: np.ndarray):
     img = img.astype(np.float64)
     img *= 255 / np.max(img)
-    img_as_current = minmax_scale(img, feature_range=(-75,-55))
+    img_as_current = minmax_scale(img, feature_range=(-75,-45))
     return img_as_current
     
 def to_vector(img: np.ndarray):

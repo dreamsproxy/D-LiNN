@@ -1,13 +1,16 @@
-import numpy as np
-from tqdm import tqdm
-import random
-import os
-import multiprocessing
-import pandas as pd
-from time import process_time
-from spatial_sensor import Spatial2D
 import cv2
+import multiprocessing
+from multiprocessing import Process
+from multiprocessing import Pool
+import numpy as np
+import os
+import pandas as pd
+from spatial_sensor import Spatial2D
+import random
+from time import process_time
+from tqdm import tqdm
 import utils
+
 class LIF:
     def __init__(self, neuron_id: str, lif_init: str = "default", trim_lim: int = 10, verbose_log: bool = False) -> None:
         self.neuron_id = neuron_id
@@ -24,7 +27,7 @@ class LIF:
         self.spike_log = list()
         self.spike_bool = False
         self.trim_lim = trim_lim
-        
+
         self.verbose_log = verbose_log
         self.full_spike_log = list()
 
@@ -35,20 +38,25 @@ class LIF:
 
         # If the voltage log is empty, assume it is at 0.0, then perform calculation
         if len(self.V) < 1:
-            delta_V = (current_input - self.V_reset) / self.tau_m
-            self.V.append(self.V_reset + delta_V)
+            #delta_V = (current_input - self.V_reset) / self.tau_m
+            #self.V.append(self.V_reset + delta_V)
+            self.V.append(self.V_reset)
         else:
             delta_V = (current_input - self.V[-1]) / self.tau_m
             self.V.append(self.V[-1] + delta_V)
 
         if self.V[-1] >= self.V_threshold:
-            self.V[-1] = self.V_reset
-            self.spike_log.append(self.V_threshold)
-            self.spike_bool = True
+            if self.spike_bool:
+                self.V[-1] = self.V_reset
+                self.spike_bool = False
+            else:
+                self.V[-1] = self.V_threshold
+                self.spike_log.append(1)
+                self.spike_bool = True
             if self.verbose_log:
                 self.full_spike_log.append(1)
         else:
-            self.spike_log.append(self.V_threshold)
+            self.spike_log.append(0)
             self.spike_bool = False
             if self.verbose_log:
                 self.full_spike_log.append(0)
@@ -68,6 +76,8 @@ class WeightMatrix:
     def PrintMatrix(self):
         print(self.matrix)
         print(self.matrix.shape)
+        print(self.matrix.columns)
+        #raise
 
 class Network:
     def __init__(self,
@@ -79,8 +89,9 @@ class Network:
                  hist_lim: int = 10,
                  verbose_logging:bool = False) -> None:
 
-        self.stdp_lr = 0.01
-        self.hebbian_lr = 0.01
+        self.stdp_lr        = np.float16(0.01)
+        self.hebbian_lr     = np.float16(0.001)
+        self.weight_decay   = np.float16(0.0005)
 
         self.n_neurons = n_neurons
         self.LIFNeurons = dict()
@@ -105,7 +116,6 @@ class Network:
                 trim_lim=self.hist_lim,
                 lif_init=self.lif_init,
                 verbose_log=self.verbose_logging)
-
         for i in range(self.n_neurons):
             self.LIFNeurons[str(i)] = LIF(
                 i, trim_lim=self.hist_lim, lif_init = self.lif_init,
@@ -115,24 +125,25 @@ class Network:
         self.neuron_keys = list(self.LIFNeurons.keys())
 
         self.weightsclass = WeightMatrix(self.neuron_keys, self.w_init)
-        self.weightsclass.PrintMatrix()
+        #self.weightsclass.PrintMatrix()
+
         self.weight_matrix = self.weightsclass.matrix
 
     def Decay(self, n1: str, n2: str, factor: float):
         factor = np.float16(factor)
-        old_weight = self.weight_matrix[n1, n2]
-        self.weight_matrix[n1, n2] -= factor * old_weight
+        old_weight = self.weight_matrix[n1][n2]
+        self.weight_matrix[n1][n2] -= factor * old_weight
 
     def Hebbian(self, n1: str, n2: str):
-        latest_pre_synaptic_spikes = self.LIFNeurons[n1].spike_log
-        latest_post_synaptic_spikes = self.LIFNeurons[n2].spike_log
-
-        correlation_term = np.dot(latest_pre_synaptic_spikes, latest_post_synaptic_spikes)
-        new_weight = self.weight_matrix[n1][n2] + np.dot(self.hebbian_lr, correlation_term)
-        if new_weight <= 0.3:
-            self.Decay(n1, n2, factor=self.hebbian_lr)
-        else:
-            self.weight_matrix[n1][n2] += new_weight
+        pre_ss = self.LIFNeurons[n1].spike_log
+        post_ss = self.LIFNeurons[n2].spike_log
+        if len(pre_ss) == len(post_ss) and len(pre_ss) >= 1:
+            correlation_term = np.dot(pre_ss, post_ss)
+            new_weight = self.weight_matrix[n1][n2] + np.dot(self.hebbian_lr, correlation_term)
+            if correlation_term <= 0.49:
+                self.Decay(n1, n2, factor=self.weight_decay)
+            else:
+                self.weight_matrix[n1][n2] += new_weight
 
     def PrepSignals(self, fired_list:list):
         # Attemp signal propagation on every step
@@ -171,6 +182,8 @@ class Network:
                 if neu.spike_bool:
                     fired_neuron_keys.append(r_k)
                 filtered_keys.remove(r_k)
+                #print("\t", len(neu.V), r_k, recieved_signal)
+
 
         for k in filtered_keys:
             neu = self.LIFNeurons[k]
@@ -181,6 +194,7 @@ class Network:
 
             if neu.spike_bool:
                 fired_neuron_keys.append(k)
+            #print("\t", len(neu.V), k, input_current)
 
         if len(fired_neuron_keys) >= 1:
             self.signal_cache = self.PrepSignals(fired_neuron_keys)
@@ -201,18 +215,25 @@ class Network:
         del fired_neuron_keys
         del filtered_keys
 
-    def step_spatial_input(self, current_vector: list):
+    def step_spatial_input(self, current_vector: np.ndarray):
         fired_cache = []
+        update_cache = {}
         for input_id in range(self.Spatial2D.total):
             pixel_index = input_id
             pixel = current_vector[pixel_index]
 
-            input_id = str(input_id)
-            neu = self.LIFNeurons[f"Input {input_id}"]
+            input_id = f"Input {input_id}"
+            #update_cache[input_id] = self.LIFNeurons[input_id]
+            #neu = update_cache[input_id]
+            neu = self.LIFNeurons[input_id]
             neu.update(pixel)
+
             if neu.spike_bool:
-                fired_cache.append(f"Input {input_id}")
-        return fired_cache
+                fired_cache.append(input_id)
+                print("BANG")
+            print("\t", len(neu.V), input_id, pixel, neu.V[-1])
+        #print(update_cache.values())
+        return (fired_cache, update_cache)
 
     def run_spatial(self, ticks):
         # SAMPLE
@@ -220,9 +241,26 @@ class Network:
         image = cv2.resize(image, (32, 32), cv2.INTER_AREA)
         current_data = utils.to_current(image)
         current_vector = utils.to_vector(current_data)
-        for i in tqdm(range(ticks)):
-            fired_cache = snn.step_spatial_input(current_vector)
-            input_data = np.float16(-55.0)
+        input_data = np.float16(-55.0)
+
+        # Run initial step!
+        snn.step(input_current = input_data, input_neuron= "",
+                    fired_input_keys=[])
+        fired_cache, update_cache = snn.step_spatial_input(current_vector)
+        #for n_k in self.neuron_keys:
+        #    print(f"{n_k}\t{self.LIFNeurons[n_k].V}")
+        #raise
+        #for i in tqdm(range(ticks)):
+        for i in range(ticks):
+            print(i)
+            with multiprocessing.Pool(processes=4) as pool:
+                for step_return in pool.imap_unordered(snn.step_spatial_input, [current_vector, ]):
+                    fired_cache = step_return[0]
+                    update_cache = step_return[1]
+                    #print(update_cache)
+            #p = Pool(6)
+            #for 
+            #fired_cache = snn.step_spatial_input(current_vector)
             snn.step(input_current = input_data, input_neuron= "",
                      fired_input_keys=fired_cache)
 
@@ -238,10 +276,11 @@ class Network:
             self.weight_log = np.asarray(self.weight_log)
             np.reshape(self.weight_log, (total_ticks, self.n_neurons, self.n_neurons))
             np.save("./weight_logs.npy", self.weight_log)
-    
+
     def SaveNeuronPotentials(self):
         format_cache = []
         for k in list(self.neuron_keys):
+            #print(self.LIFNeurons[k].V)
             format_cache.append(np.asarray(self.LIFNeurons[k].V))
         format_cache = np.asarray(format_cache)
         np.save("./neuron_V_logs.npy", format_cache)
@@ -249,11 +288,12 @@ class Network:
     def SaveNeuronSpikes(self):
         # Check if the neurons are logged verbosely
         len(self.LIFNeurons["0"].full_spike_log)
-        if len(self.LIFNeurons["0"].full_spike_log) <= 1:
+        if len(self.LIFNeurons["0"].full_spike_log) < 1:
             e = Exception("Neurons were not initialized with 'verbose_log' to 'True' !")
             raise e
         format_cache = []
         for k in list(self.neuron_keys):
+            #print(len(self.LIFNeurons[k].full_spike_log))
             format_cache.append(np.asarray(self.LIFNeurons[k].full_spike_log))
         format_cache = np.asarray(format_cache)
         np.save("./neuron_spike_logs.npy", format_cache)
@@ -269,11 +309,13 @@ if __name__ == "__main__":
         audio_input=False,
         image_input=True)
     snn.InitNetwork()
-    print(snn.neuron_keys)
+    #print(snn.neuron_keys)
     snn.run_spatial(1)
-    snn.SaveWeightTables()
-    snn.SaveNeuronSpikes()
-    snn.SaveNeuronPotentials()
-    # Dump cols and rows
-    with open("ids.txt", "w") as outfile:
-        outfile.write(",".join(snn.neuron_keys))
+    #snn.SaveWeightTables()
+    for i in snn.neuron_keys:
+        neu = snn.LIFNeurons[f"{i}"]
+        #print(i)
+        #print(neu.V)
+    #snn.SaveNeuronSpikes()
+    #snn.SaveNeuronPotentials()
+    
