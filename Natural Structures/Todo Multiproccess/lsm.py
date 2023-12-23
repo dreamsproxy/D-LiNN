@@ -9,6 +9,7 @@ import utils
 from seed_generators import random_coords, generate_grids
 from scipy.spatial import distance
 import json
+
 class LIF:
     def __init__(self, neuron_id: str, lif_init: str = "default", trim_lim: int = 10, verbose_log: bool = False) -> None:
         self.neuron_id = neuron_id
@@ -36,14 +37,21 @@ class LIF:
 
     # Define a function to update the LIF neuron's state
     def update(self, current_input: np.float64 = np.float64(0)):
+        # Trim essentially cuts the list when it is beyond a specified range
+        # Required for STDP + Hebb fusion
+        # See class methods that requires this value:
+        #   Class: Network
+        #       Func: get_correlation_term
+        #       Func: adjust_weights
+        #       Func: hebbian_optimization
         if len(self.spike_log) >= self.trim_lim:
             del self.spike_log[0]
 
         # If the voltage log is empty, assume it is at 0.0, then perform calculation
         if len(self.V) < 1:
-            #delta_V = (current_input - self.V_reset) / self.tau_m
-            #self.V.append(self.V_reset + delta_V)
-            self.V.append(self.V_reset)
+            delta_V = (current_input - self.V_reset) / self.tau_m
+            self.V.append(self.V_reset + delta_V)
+            #self.V.append(self.V_reset)
         else:
             delta_V = (current_input - self.V[-1]) / self.tau_m
             self.V.append(self.V[-1] + delta_V)
@@ -79,7 +87,10 @@ class WeightMatrix:
             raise Exception(e)
         self.matrix = pd.DataFrame(self.matrix, columns=neuron_keys, index=neuron_keys)
     
-    def postprocess(self):
+    # postproccess essentially removes the below types of connections:
+    #   Input -> Input
+    #   Itself -> itself (Recurrent)
+    def postproccess(self):
         for k1 in self.neuron_keys:
             for k2 in self.neuron_keys:
                 if k2 == k1:
@@ -89,6 +100,7 @@ class WeightMatrix:
                     self.matrix[k2][k1] = np.nan
                     self.matrix[k1][k2] = np.nan
 
+    # Used for checking matrix (DEBUG)
     def PrintMatrix(self):
         print(self.matrix)
         print(self.matrix.shape)
@@ -102,19 +114,30 @@ class Network:
                  hist_lim: int = 10,
                  verbose_logging:bool = False) -> None:
 
+        # Network Parameters
         self.hebbian_lr     = np.float64(0.001)
         self.weight_decay   = np.float64(0.0005)
         self.weight_penalty = np.float64(0.5)
 
         self.n_neurons      = n_neurons
+        
+        # Where all neuron's keys and their LIF objects (KEY : child object)
         self.LIFNeurons     = dict()
+        
+        # Boolean, change to False and there will be no input image
+        # If False, change input_neurons: list in class method: "step()"
+        # If False, remove "step_vision()" calls
         self.image_input    = image_input
 
         self.w_init         = w_init
         self.weight_log     = []
         
+        # Essentially a backlog / to-do list for the network
+        # If any neurons fired at step 0 completion:
+        #       At next step, these neurons will be simulated first
         self.signal_cache   = dict()
 
+        # Neuron parameters
         self.hist_lim       = hist_lim
         self.lif_init       = lif_init
 
@@ -122,10 +145,15 @@ class Network:
         self.step_debug_log = []
 
     def InitNetwork(self):
+        # WARNING START
+        # No need to touch this area, unless you absolutly want to modify it
+        
+        # Initialize data reduction system: See file ./Conv2D.py
         self.image_sensor = Conv2D.Conv2D(
             resolution = 256, kernel_size = 3)
         self.n_inputs = self.image_sensor.n_sensors
 
+        # Generating key : coordinate pairs for visualization
         coordinates = dict()
         coordinates_dump = dict()
         input_points = generate_grids(256, 256, 1024, s = 256, r = self.n_inputs)
@@ -134,8 +162,6 @@ class Network:
             self.LIFNeurons[f"Alpha {i}"] = LIF(
                 i, trim_lim=self.hist_lim, lif_init = self.lif_init,
                 verbose_log=self.verbose_logging)
-            #print(i)
-            #print(input_points[i])
             f = str(tuple(input_points[i])).replace("(", "").replace(")", "")
             coordinates[f"Alpha {i}"] = input_points[i]
             coordinates_dump[f"Alpha {i}"] = f
@@ -153,6 +179,9 @@ class Network:
         self.n_neurons += self.image_sensor.n_sensors
         self.neuron_keys = list(self.LIFNeurons.keys())
 
+        # WARNING END
+        
+        # See WeightMatrix class:
         self.weightsclass = WeightMatrix(self.neuron_keys, self.w_init)
         self.weightsclass.PrintMatrix()
         self.weight_matrix = self.weightsclass.matrix
@@ -160,6 +189,8 @@ class Network:
         return coordinates, coordinates_dump
 
     def get_correlation_term(self, n1: str, n2: str):
+        # Calculates the activity correlation between both
+        # neurons.
         pre_ss = self.LIFNeurons[n1].spike_log
         post_ss = self.LIFNeurons[n2].spike_log
         if len(pre_ss) == len(post_ss) and len(pre_ss) >= 1:
@@ -169,16 +200,15 @@ class Network:
         return correlation_term
 
     def adjust_weights(self, w, correlation_term):
+        # Adjusts the weight, that is inside self.weight_matrix
+        # Originally was a lambda func call, but more ops were needed
         new_w = np.dot(self.hebbian_lr, correlation_term)
         new_w += w
         new_w *= self.weight_decay
 
         return new_w
 
-    # Function to replace values
-    def replace_values(self, x):
-        return np.float64(0.19) if x < np.float64(0.00999) else x
-    
+    # IDK how to explain this part, sorry!
     def hebbian_optimization(self, args):
         df, pair_list = args
         for row_index, col_name, func in pair_list:
@@ -187,10 +217,13 @@ class Network:
             df.at[row_index, col_name] = func(
                 df.at[str(row_index), str(col_name)],
                 correlation_term = c_term)
-        # Apply the function to the entire DataFrame
-        #df = df.apply(self.replace_values)
 
     def PrepSignals(self, fired_list:list):
+        # The backlog handler
+        # Called as a data formatter + handler
+        # Handler stores to a backlog/todo list
+        # Data is dumped to self.signal_cache
+        # Data is then accessed at new step call
         cache_dict = dict()
         for fired_k in fired_list:
             for other_k in self.neuron_keys:
