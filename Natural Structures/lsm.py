@@ -1,12 +1,14 @@
 import numpy as np
 from tqdm import tqdm
 import random
-import os
 import multiprocessing
 import pandas as pd
 from time import process_time
 import Conv2D
 import utils
+from seed_generators import random_coords, generate_grids
+from scipy.spatial import distance
+import json
 class LIF:
     def __init__(self, neuron_id: str, lif_init: str = "default", trim_lim: int = 10, verbose_log: bool = False) -> None:
         self.neuron_id = neuron_id
@@ -63,7 +65,9 @@ class LIF:
                 self.full_spike_log.append(0.0)
 
 class WeightMatrix:
-    def __init__(self, neuron_keys: int, w_init: str = "default"):
+    def __init__(self, neuron_keys:list = [], w_init: str = "default"):
+        self.neuron_keys = neuron_keys
+        
         self.n_neurons = len(neuron_keys)
         if w_init == "default":
             self.matrix = np.zeros(shape=(self.n_neurons, self.n_neurons))+np.float64(0.5)
@@ -74,10 +78,17 @@ class WeightMatrix:
             e = "\n\n\tWeight init only takes 'zeros' or 'random'!\n\tDefault is zero.\n"
             raise Exception(e)
         self.matrix = pd.DataFrame(self.matrix, columns=neuron_keys, index=neuron_keys)
-        for k1 in neuron_keys:
-            for k2 in neuron_keys:
+    
+    def postprocess(self):
+        for k1 in self.neuron_keys:
+            for k2 in self.neuron_keys:
                 if k2 == k1:
                     self.matrix[k2][k1] = np.nan
+                    self.matrix[k1][k2] = np.nan
+                if "Alpha " in k1 and "Alpha " in k2:
+                    self.matrix[k2][k1] = np.nan
+                    self.matrix[k1][k2] = np.nan
+
     def PrintMatrix(self):
         print(self.matrix)
         print(self.matrix.shape)
@@ -115,15 +126,29 @@ class Network:
             resolution = 256, kernel_size = 3)
         self.n_inputs = self.image_sensor.n_sensors
 
+        coordinates = dict()
+        coordinates_dump = dict()
+        input_points = generate_grids(256, 256, 1024, s = 256, r = self.n_inputs)
+        input_points = np.reshape(input_points, (input_points.shape[0] * input_points.shape[1], 3))
         for i in range(self.n_inputs):
             self.LIFNeurons[f"Alpha {i}"] = LIF(
                 i, trim_lim=self.hist_lim, lif_init = self.lif_init,
                 verbose_log=self.verbose_logging)
+            #print(i)
+            #print(input_points[i])
+            f = str(tuple(input_points[i])).replace("(", "").replace(")", "")
+            coordinates[f"Alpha {i}"] = input_points[i]
+            coordinates_dump[f"Alpha {i}"] = f
+            
 
+        neuron_points = random_coords(self.n_neurons, x_lim=1024, y_lim=1024, z_lim=512)
         for i in range(self.n_neurons):
             self.LIFNeurons[str(i)] = LIF(
                 i, trim_lim=self.hist_lim, lif_init = self.lif_init,
                 verbose_log=self.verbose_logging)
+            f = str(tuple(neuron_points[i])).replace("(", "").replace(")", "")
+            coordinates[str(i)] = input_points[i]
+            coordinates_dump[str(i)] = f
 
         self.n_neurons += self.image_sensor.n_sensors
         self.neuron_keys = list(self.LIFNeurons.keys())
@@ -131,6 +156,8 @@ class Network:
         self.weightsclass = WeightMatrix(self.neuron_keys, self.w_init)
         self.weightsclass.PrintMatrix()
         self.weight_matrix = self.weightsclass.matrix
+
+        return coordinates, coordinates_dump
 
     def get_correlation_term(self, n1: str, n2: str):
         pre_ss = self.LIFNeurons[n1].spike_log
@@ -321,9 +348,9 @@ class Network:
                 img = images[img_ticker]
             else:
                 img = images[img_ticker]
-            fired_cache = snn.step_vision(current_vector)
+            fired_cache = self.step_vision(current_vector)
             input_data = np.float64(-55.0)
-            snn.step(i, input_current = input_data,
+            self.step(i, input_current = input_data,
                      fired_input_keys=fired_cache)
             img_ticker += 1
 
@@ -364,15 +391,27 @@ if __name__ == "__main__":
     snn = Network(
         n_neurons = 64,
         lif_init = "random",
-        w_init="random",
+        w_init="default",
         hist_lim=21,
         verbose_logging = True,
         image_input=True)
-    snn.InitNetwork()
-    snn.RunVision(256)
+    coords_dict, coords_dump = snn.InitNetwork()
+    # Dump ID : Coord pair to json
+    with open("coordinates.json", "w") as outfile:
+        json.dump(coords_dump, outfile)
+
+    # Cross Calc
+    for k1 in snn.neuron_keys:
+        for k2 in snn.neuron_keys:
+            if k2 != k1:
+                dst = distance.euclidean(coords_dict[k2], coords_dict[k1])
+                snn.weight_matrix[k2][k1] = dst
+    snn.weightsclass.postprocess()
+    snn.weightsclass.PrintMatrix()
+
+    snn.RunVision(1)
     snn.SaveWeightTables()
-    #snn.SaveNeuronSpikes()
-    #snn.SaveNeuronPotentials()
+
     # Dump cols and rows
     with open("ids.txt", "w") as outfile:
         outfile.write(",".join(snn.neuron_keys))
