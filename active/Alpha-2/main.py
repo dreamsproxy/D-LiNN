@@ -3,7 +3,6 @@ from tqdm import tqdm
 import random
 import os
 import multiprocessing
-import sensors
 import pandas as pd
 from time import process_time
 import Conv2D
@@ -36,37 +35,35 @@ class LIF:
     # Define a function to update the LIF neuron's state
     def update(self, current_input: np.float16 = np.float16(0)):
         if len(self.spike_log) >= self.trim_lim:
-            self.full_debug.append("TRIM: called!")
             del self.spike_log[0]
 
         # If the voltage log is empty, assume it is at 0.0, then perform calculation
         if len(self.V) < 1:
-            self.full_debug.append("\tDelta Op: V empty, calculated with zeros")
-            delta_V = (current_input - self.V_reset) / self.tau_m
-            self.V.append(self.V_reset + delta_V)
+            #delta_V = (current_input - self.V_reset) / self.tau_m
+            #self.V.append(self.V_reset + delta_V)
+            self.V.append(self.V_reset)
         else:
-            self.full_debug.append("\tDelta Op: Normal Delta Calculation")
             delta_V = (current_input - self.V[-1]) / self.tau_m
             self.V.append(self.V[-1] + delta_V)
 
         if self.V[-1] >= self.V_threshold:
-            self.full_debug.append("\tThresh: Spike detected, setting to reset V")
-            self.V[-1] = self.V_reset
-            self.spike_log.append(self.V_threshold)
-            self.spike_bool = True
+            if self.spike_bool:
+                self.V[-1] = self.V_reset
+                self.spike_bool = False
+            else:
+                self.V[-1] = self.V_threshold
+                self.spike_log.append(1.0)
+                self.spike_bool = True
             if self.verbose_log:
-                self.full_spike_log.append(1)
+                self.full_spike_log.append(1.0)
         else:
-            self.full_debug.append("\tThresh: No spike detected, continuing as usual")
-            self.spike_log.append(self.V_threshold)
+            self.spike_log.append(0.0)
             self.spike_bool = False
             if self.verbose_log:
-                self.full_spike_log.append(0)
-        self.full_debug.append(f"V: {self.V[-1]}")
+                self.full_spike_log.append(0.0)
 
 class WeightMatrix:
     def __init__(self, neuron_keys: int, w_init: str = "default"):
-        self.neuron_keys = neuron_keys
         self.n_neurons = len(neuron_keys)
         if w_init == "default":
             self.matrix = np.zeros(shape=(self.n_neurons, self.n_neurons))+np.float16(0.5)
@@ -76,6 +73,10 @@ class WeightMatrix:
             e = "\n\n\tWeight init only takes 'zeros' or 'random'!\n\tDefault is zero.\n"
             raise Exception(e)
         self.matrix = pd.DataFrame(self.matrix, columns=neuron_keys, index=neuron_keys)
+        for k1 in neuron_keys:
+            for k2 in neuron_keys:
+                if k2 == k1:
+                    self.matrix[k2][k1] = np.nan
     def PrintMatrix(self):
         print(self.matrix)
         print(self.matrix.shape)
@@ -92,6 +93,7 @@ class Network:
 
         self.stdp_lr = 0.01
         self.hebbian_lr = 0.01
+        self.weight_decay = 0.5
 
         self.n_neurons = n_neurons
         self.LIFNeurons = dict()
@@ -132,21 +134,36 @@ class Network:
         self.weightsclass.PrintMatrix()
         self.weight_matrix = self.weightsclass.matrix
 
+    def get_correlation_term(self, n1: str, n2: str):
+        pre_ss = self.LIFNeurons[n1].spike_log
+        post_ss = self.LIFNeurons[n2].spike_log
+        if len(pre_ss) == len(post_ss) and len(pre_ss) >= 1:
+            correlation_term = np.dot(pre_ss, post_ss)
+        else:
+            correlation_term = 0
+        return correlation_term
+
     def Decay(self, n1: str, n2: str, factor: float):
         factor = np.float16(factor)
-        old_weight = self.weight_matrix[n1, n2]
-        self.weight_matrix[n1, n2] -= factor * old_weight
+        old_weight = self.weight_matrix[n1][n2]
+        self.weight_matrix[n1][n2] -= factor * old_weight
 
-    def Hebbian(self, n1: str, n2: str):
-        latest_pre_synaptic_spikes = self.LIFNeurons[n1].spike_log
-        latest_post_synaptic_spikes = self.LIFNeurons[n2].spike_log
+    def og_hebbian(self, n1: str, n2: str):
+        correlation_term = self.get_correlation_term(n1, n2)
+        self.weight_matrix[n1][n2] += np.dot(self.hebbian_lr, correlation_term)
+        self.Decay(n1, n2, factor=self.hebbian_lr)
 
-        correlation_term = np.dot(latest_pre_synaptic_spikes, latest_post_synaptic_spikes)
-        new_weight = self.weight_matrix[n1][n2] + np.dot(self.hebbian_lr, correlation_term)
-        if new_weight <= 0.3:
-            self.Decay(n1, n2, factor=self.hebbian_lr)
-        else:
-            self.weight_matrix[n1][n2] += new_weight
+    def adjust_weights(self, w, correlation_term):
+        return w + correlation_term
+
+    def vect_hebbian(self, args):
+        df, pair_list = args
+        for row_index, col_name, func in pair_list:
+            # Use vectorized operation to update elements efficiently
+            c_term = self.get_correlation_term(row_index, col_name)
+            df.at[row_index, col_name] = func(
+                df.at[str(row_index), str(col_name)],
+                correlation_term = c_term)
 
     def PrepSignals(self, fired_list:list):
         # Attemp signal propagation on every step
@@ -154,14 +171,14 @@ class Network:
         cache_dict = dict()
         for fired_k in fired_list:
             for other_k in self.neuron_keys:
-                if fired_k != other_k:
+                if other_k != fired_k:
                     weight = self.weight_matrix[fired_k][other_k]
                     signal = self.LIFNeurons[fired_k].V_threshold
                     cache_dict[str(other_k)] = (signal*weight)
 
         return cache_dict
 
-    def step(self, input_current = np.float16(0.0000), input_neuron:str = "0", fired_input_keys = []):
+    def step(self, input_current = np.float16(0.0000), input_neurons:list = [""], fired_input_keys = []):
         if self.verbose_logging:
             self.step_debug_log.append("\n\nStep [START]")
 
@@ -188,7 +205,7 @@ class Network:
                 r_k = receiver_neuron
                 recieved_signal = self.signal_cache[str(r_k)]
                 neu = self.LIFNeurons[r_k]
-                if str(r_k) == str(input_neuron):
+                if str(r_k) == str(input_neurons):
                     neu.update(input_current+recieved_signal)
                     if self.verbose_logging:
                         self.step_debug_log.append(f"\t\tUpdate: input neuron {r_k}")
@@ -210,7 +227,7 @@ class Network:
             if self.verbose_logging:
                 self.step_debug_log.append(f"")
             neu = self.LIFNeurons[k]
-            if str(k) == str(input_neuron):
+            if str(k) == str(input_neurons):
                 if self.verbose_logging:
                     self.step_debug_log.append(f"\t\tUpdate: input neuron {k}")
                 neu.update(input_current)
@@ -233,16 +250,32 @@ class Network:
             self.step_debug_log.append(f"\tNormal Step [ENDED]")
             self.step_debug_log.append(f"\n\tGLOBAL HEBBIAN WEIGHT OPT [START]")
 
-        hebb_start = process_time()
+        print("OG HEBB START")
+        og_hebb_start = process_time()
         # Do Global Weight Update
         for k1 in self.neuron_keys:
             for k2 in self.neuron_keys:
                 if k1 != k2:
                     self.Hebbian(k1, k2)
-        hebb_end = process_time()
+        og_hebb_end = process_time()
+        print("OG HEBB END")
+        print(F"TOOK\t{og_hebb_end - og_hebb_start}\n")
+        raise
+
+        print("Vectorized HEBB START")
+        vect_hebb_start = process_time()
+        weight_update_key_pairs = []
+        for k1 in self.neuron_keys:
+            for k2 in self.neuron_keys:
+                if k1 != k2:
+                    weight_update_key_pairs.append((k1, k2, self.adjust_weights))
+        vect_hebb_end = process_time()
+        print("Vectorized HEBB END")
+        print(F"TOOK\t{vect_hebb_end - vect_hebb_start}\n")
+        
         if self.verbose_logging:
             self.step_debug_log.append(f"\tGLOBAL HEBBIAN WEIGHT OPT [ENDED]")
-            self.step_debug_log.append(f"\t\tTOOK {hebb_end - hebb_start}")
+            self.step_debug_log.append(f"\t\tTOOK {vect_hebb_end - vect_hebb_start}")
             self.step_debug_log.append(f"\n\tWeight Normalization [START]")
 
         norm_start = process_time()
@@ -294,16 +327,17 @@ class Network:
         current_vector = utils.to_vector(current_data)
         for i in tqdm(range(ticks)):
             #print("VISION STEP START")
-            fired_cache = snn.step_vision(current_vector)
+            #fired_cache = snn.step_vision(current_vector)
             #print("VISION STEP ENDED")
             input_data = np.float16(-55.0)
             #print("NORMAL STEP START")
-            snn.step(input_current = input_data, input_neuron= "",
-                     fired_input_keys=fired_cache)
+            snn.step(input_current = input_data, input_neuron= "0",
+                     fired_input_keys=[])
             #print("NORMAL STEP ENDED")
 
     def SaveWeightTables(self, mode = "npy"):
         if mode == "npy":
+            print(self.weight_log[-1])
             total_ticks = len(self.weight_log)
             self.weight_log = np.asarray(self.weight_log)
             np.reshape(self.weight_log, (total_ticks, self.n_neurons, self.n_neurons))
@@ -337,7 +371,7 @@ class Network:
 if __name__ == "__main__":
     snn = Network(
         n_neurons = 16,
-        lif_init = "default",
+        lif_init = "random",
         w_init="random",
         hist_lim=17,
         verbose_logging = True,
@@ -345,12 +379,12 @@ if __name__ == "__main__":
         image_input=True)
     snn.InitNetwork()
     print(snn.neuron_keys)
-    snn.RunVision(1)
-    #snn.SaveWeightTables()
+    snn.RunVision(50)
+    snn.SaveWeightTables()
     #snn.SaveNeuronSpikes()
     #snn.SaveNeuronPotentials()
     # Dump cols and rows
     with open("ids.txt", "w") as outfile:
         outfile.write(",".join(snn.neuron_keys))
-    for debug_msg in snn.step_debug_log:
-        print(debug_msg)
+    #for debug_msg in snn.step_debug_log:
+    #    print(debug_msg)

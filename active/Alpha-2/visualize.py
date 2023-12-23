@@ -8,8 +8,21 @@ import plotly.graph_objects as go
 def WeightMatrix(path = "./weight_logs.npy"):
     weight_logs = []
     weight_matrix = np.load(path)
+    with open("ids.txt", "r") as infile:
+        neuron_ids = infile.read().split(",")
+
     for tick_slice in weight_matrix:
-        df_tick_slice = pd.DataFrame(tick_slice, columns=[str(x) for x in range(tick_slice.shape[0])])
+        df_tick_slice = pd.DataFrame(tick_slice, columns=neuron_ids)
+        df_tick_slice.insert(0, "ID", neuron_ids)
+        print(neuron_ids)
+        df_tick_slice.set_index(['ID'], inplace= True)
+        for i in neuron_ids:
+            if "Alpha" in i:
+                df_tick_slice.drop([f"{i}"], inplace=True)
+        df_tick_slice.transpose(copy=False)
+        for i in neuron_ids:
+            if "Alpha" in i:
+                df_tick_slice.drop([f"{i}"], axis=1, inplace=True)
         weight_logs.append(df_tick_slice)
     frames = [
         go.Frame(
@@ -40,12 +53,12 @@ def WeightMatrix(path = "./weight_logs.npy"):
                             for f in frames],}],
         height=1000,
         width=1000,
-        yaxis={"title": "Pre-Synaptic IDs", "tickangle":90},
+        yaxis={"title": "Pre-Synaptic IDs", "tickangle":0},
         xaxis={"title": "Post-Synaptic IDs", "side": "top"},
         title_x=0.5,
 
     )
-
+    fig['layout']['yaxis']['autorange'] = "reversed"
     fig.show()
     raise
 
@@ -164,6 +177,7 @@ def Network(path = "./weight_logs.npy"):
 
     fig.show()
 if __name__ == "__main__":
+    WeightMatrix()
     #NeuronSpikes()
-    NeuronPotentials()
+    #NeuronPotentials()
     #Network()

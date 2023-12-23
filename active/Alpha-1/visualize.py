@@ -164,6 +164,7 @@ def Network(path = "./weight_logs.npy"):
 
     fig.show()
 if __name__ == "__main__":
+    WeightMatrix()
     #NeuronSpikes()
-    NeuronPotentials()
+    #NeuronPotentials()
     #Network()

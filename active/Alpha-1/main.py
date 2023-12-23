@@ -3,7 +3,6 @@ from tqdm import tqdm
 import random
 import os
 import multiprocessing
-import sensors
 import pandas as pd
 from time import process_time
 class LIF:
@@ -74,9 +73,6 @@ class WeightMatrix:
             e = "\n\n\tWeight init only takes 'zeros' or 'random'!\n\tDefault is zero.\n"
             raise Exception(e)
         self.matrix = pd.DataFrame(self.matrix, columns=neuron_keys, index=neuron_keys)
-    def PrintMatrix(self):
-        print(self.matrix)
-        print(self.matrix.shape)
 
 class Network:
     def __init__(self,
@@ -89,7 +85,7 @@ class Network:
                  verbose_logging:bool = False) -> None:
 
         self.stdp_lr = 0.01
-        self.hebbian_lr = 0.01
+        self.hebbian_lr = 0.0001
 
         self.n_neurons = n_neurons
         self.LIFNeurons = dict()
@@ -110,56 +106,28 @@ class Network:
         self.step_debug_log = []
 
     def InitNetwork(self):
-        if self.audio_input:
-            self.audio_sensor = sensors.Audio(n_bands=32)
-            n_audio_inputs = self.audio_sensor.n_bands
-            for i in range(n_audio_inputs):
-                self.LIFNeurons[f"Audio {i}"] = LIF(
-                    i, trim_lim=self.hist_lim, lif_init = self.lif_init,
-                    verbose_log=self.verbose_logging)
-
-            for i in range(self.n_neurons):
-                self.LIFNeurons[str(i)] = LIF(
-                    i, trim_lim=self.hist_lim, lif_init = self.lif_init,
-                    verbose_log=self.verbose_logging)
-            self.n_neurons += n_audio_inputs
-
-        elif self.image_input:
-            self.image_sensor = sensors.Vision(
-                n_channels=1, resolution = 256, kernel_size = 16)
-            
-            for i in range(self.image_sensor.n_kernels):
-                self.LIFNeurons[f"Pixel {i}"] = LIF(
-                    i, trim_lim=self.hist_lim, lif_init = self.lif_init,
-                    verbose_log=self.verbose_logging)
-
-            for i in range(self.n_neurons):
-                self.LIFNeurons[str(i)] = LIF(
-                    i, trim_lim=self.hist_lim, lif_init = self.lif_init,
-                    verbose_log=self.verbose_logging)
-            self.n_neurons += self.image_sensor.n_kernels
+        for i in range(self.n_neurons):
+            self.LIFNeurons[str(i)] = LIF(
+                i, trim_lim=self.hist_lim, lif_init = self.lif_init,
+                verbose_log=self.verbose_logging)
 
         self.neuron_keys = list(self.LIFNeurons.keys())
 
         self.weightsclass = WeightMatrix(self.neuron_keys, self.w_init)
-        self.weightsclass.PrintMatrix()
         self.weight_matrix = self.weightsclass.matrix
 
     def Decay(self, n1: str, n2: str, factor: float):
         factor = np.float16(factor)
-        old_weight = self.weight_matrix[n1, n2]
-        self.weight_matrix[n1, n2] -= factor * old_weight
+        old_weight = self.weight_matrix[n1][n2]
+        self.weight_matrix[n1][n2] -= factor * old_weight
 
     def Hebbian(self, n1: str, n2: str):
         latest_pre_synaptic_spikes = self.LIFNeurons[n1].spike_log
         latest_post_synaptic_spikes = self.LIFNeurons[n2].spike_log
 
         correlation_term = np.dot(latest_pre_synaptic_spikes, latest_post_synaptic_spikes)
-        new_weight = self.weight_matrix[n1][n2] + np.dot(self.hebbian_lr, correlation_term)
-        if new_weight <= 0.3:
-            self.Decay(n1, n2, factor=self.hebbian_lr)
-        else:
-            self.weight_matrix[n1][n2] += new_weight
+        self.weight_matrix[n1][n2] += np.dot(self.hebbian_lr, correlation_term)
+        self.Decay(n1, n2, factor=0.5)
 
     def PrepSignals(self, fired_list:list):
         # Attemp signal propagation on every step
@@ -191,10 +159,12 @@ class Network:
             for receiver_neuron in signal_keys:
                 r_k = receiver_neuron
                 recieved_signal = self.signal_cache[str(r_k)]
+                print(recieved_signal)
                 neu = self.LIFNeurons[r_k]
                 if str(r_k) == str(input_neuron):
                     neu.update(input_current+recieved_signal)
                 else:
+                    
                     neu.update(np.float16(recieved_signal))
 
                 if neu.spike_bool:
@@ -206,7 +176,7 @@ class Network:
             if str(k) == str(input_neuron):
                 neu.update(input_current)
             else:
-                neu.update(np.float16(0))
+                neu.update(np.float16(-55))
 
             if neu.spike_bool:
                 fired_neuron_keys.append(k)
@@ -219,7 +189,7 @@ class Network:
         for k1 in self.neuron_keys:
             for k2 in self.neuron_keys:
                 if k1 != k2:
-                    self.Hebbian(k1, k2)
+                    self.Hebbian(k2, k1)
         hebb_end = process_time()
 
         # Normalize the weights to prevent uncontrolled growth
@@ -227,55 +197,16 @@ class Network:
         # Scale the weights to keep it between 0.0 and 1.0
         self.weight_matrix = (self.weight_matrix-np.min(self.weight_matrix))/(np.max(self.weight_matrix)-np.min(self.weight_matrix))
 
-
         # Copy weight matrix to a logger
         self.weight_log.append(np.copy(self.weight_matrix.to_numpy()))
         del fired_neuron_keys
         del filtered_keys
 
-    def step_audio(self, input_bands: list=[]):
-        fired_cache = []
-        for input_id in tqdm(range(self.audio_sensor.n_bands)):
-            band_freq = input_bands[input_id]
-            input_id = str(input_id)
-            neu = self.LIFNeurons[f"Audio {input_id}"]
-            neu.update(band_freq)
-            if neu.spike_bool:
-                fired_cache.append(f"Audio {input_id}")
-        return fired_cache
-
-    def RunAudio(self, ticks):
+    def run(self, ticks):
         for i in tqdm(range(ticks)):
-            audio_bands = self.audio_sensor.ExtractFrequencyBands()
-            input_data = audio_bands
-            fired_cache = snn.step_audio(input_bands = input_data)
             input_data = np.float16(-55.0)
-            snn.step(input_current = input_data, input_neuron= "",
-                     fired_input_keys=fired_cache)
-        snn.audio_sensor.shutdown()
-
-    def step_vision(self, current_vector: list):
-        fired_cache = []
-        for input_id in range(self.image_sensor.n_kernels):
-            pixel_index = input_id
-            pixel = current_vector[pixel_index]
-            
-            input_id = str(input_id)
-            neu = self.LIFNeurons[f"Pixel {input_id}"]
-            neu.update(pixel)
-            if neu.spike_bool:
-                fired_cache.append(f"Pixel {input_id}")
-        return fired_cache
-    
-    def RunVision(self, ticks):
-        image = self.image_sensor.Load("./sample.png")
-        current_data = self.image_sensor.ConvertToCurrent(image)
-        current_vector = self.image_sensor.ToVector(current_data)
-        for i in tqdm(range(ticks)):
-            fired_cache = snn.step_vision(current_vector)
-            input_data = np.float16(-55.0)
-            snn.step(input_current = input_data, input_neuron= "",
-                     fired_input_keys=fired_cache)
+            snn.step(input_current = input_data, input_neuron= "0",
+                     fired_input_keys=[])
 
     def SaveWeightTables(self, mode = "npy"):
         if mode == "npy":
@@ -321,7 +252,7 @@ if __name__ == "__main__":
         image_input=True)
     snn.InitNetwork()
     print(snn.neuron_keys)
-    snn.RunVision(1)
+    snn.run(10)
     snn.SaveWeightTables()
     snn.SaveNeuronSpikes()
     snn.SaveNeuronPotentials()

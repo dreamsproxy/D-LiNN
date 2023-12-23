@@ -2,6 +2,7 @@ Learning/
 *.code-workspace
 prototype**/
 **.npy
+**/Experiments
 
 **/weight_logs/
 **/SAMPLES/

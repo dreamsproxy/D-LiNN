@@ -4,14 +4,13 @@ from matplotlib import pyplot as plt
 from sklearn.preprocessing import minmax_scale
 import tqdm
 from glob import glob
-
 class Conv2D:
     def __init__(self, kernel_size, resolution) -> None:
         self.logs = []
         self.first_step = True
-        self.kernel_size = kernel_size
-        self.strides = 2
-        self.n_sensors = resolution == self.strides
+        self.kernel_size = (kernel_size, kernel_size)
+        self.strides = 4
+        self.n_sensors = resolution // self.strides
 
         self.kernel = np.random.rand(self.kernel_size[0], self.kernel_size[1])
         self.kernel = -2 + (2 - (-2)) * self.kernel

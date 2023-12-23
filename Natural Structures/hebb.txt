@@ -1,0 +1,26 @@
+Original:
+    Key : Key -> access df
+    df[key][key] -> do calc
+    calc result -> access df
+    df[key][key] = calc result
+
+    16 core neurons
+    64 Vision neurons
+    80 Total neurons
+
+    TOOK: 0.375 seconds
+
+Vectorized DF modification:
+    (Key : Key, adjust lambda) -> to do list
+    iterate through to do list
+    call df.apply adjust lambda to row col pair
+    Done.
+
+    16 core neurons
+    64 Vision neurons
+    80 Total neurons
+
+    TOOK: 0.078125 seconds
+
+Conclusion:
+    Use Vectorized DF.Apply method!
