@@ -46,7 +46,15 @@ def load_coords(path = "coordinates.json"):
     for id in list(temp_dict.keys()):
         formated = [np.float16(ax) for ax in temp_dict[id].split(", ")]
         coordinates[id] = tuple(formated)
-    
+    for id in list(coordinates.keys()):
+        if "Alpha" in id:
+            c_temp = []
+            for i, c in enumerate(coordinates[id]):
+                if i == 2:
+                    c *= 2
+                c_temp.append(c*4)
+            #print(type(coordinates[id]))
+            coordinates[id] = tuple(c_temp)
     return coordinates
 
 def adjust_coordinates(coordinates, nested_weights):
@@ -57,7 +65,7 @@ def adjust_coordinates(coordinates, nested_weights):
             source_index = nodes.index(source)
             for target, weight in targets.items():
                 target_index = nodes.index(target)
-                node_positions[source_index] += (node_positions[target_index] - node_positions[source_index]) * np.float16(weight / np.float16(2))
+                node_positions[source_index] += (node_positions[target_index] - node_positions[source_index]) * np.float16(np.float16(weight / np.float16(2)) / 2)
 
     return dict(zip(nodes, node_positions))
 
@@ -66,17 +74,18 @@ nested_weights = load_weights()
 #print(nested_weights)
 nested_weights = to_dict(nested_weights)
 
-#coordinates = adjust_coordinates(coordinates, nested_weights)
+coordinates = adjust_coordinates(coordinates, nested_weights)
 
 # Extract node positions and edges
 nodes = list(coordinates.keys())
 
-node_positions = np.array(list(coordinates.values()))
+
+node_positions = np.multiply(np.array(list(coordinates.values())), 1.5)
 
 edges = []
 for source, targets in nested_weights.items():
     for target, weight in targets.items():
-        if weight >= 0.666:
+        if weight >= 0.8:
             edges.append((nodes.index(source), nodes.index(target)))
 canvas = scene.SceneCanvas(keys='interactive', bgcolor='black', size=(1280, 800), show=True)
 

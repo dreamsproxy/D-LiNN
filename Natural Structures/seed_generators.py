@@ -24,9 +24,9 @@ def random_coords(neuron_count: int = 256, max_size: int = 0,
         z_lim = max_size
 
     #Generate random coordinates within (size, size, size)
-    x_coords = np.vstack(np.random.randint(-512, high=x_lim, size=(neuron_count)))
-    y_coords = np.vstack(np.random.randint(-512, high=y_lim, size=(neuron_count)))
-    z_coords = np.vstack(np.random.randint(-256, high=z_lim, size=(neuron_count)))
+    x_coords = np.vstack(np.random.randint(0, high=x_lim, size=(neuron_count)))
+    y_coords = np.vstack(np.random.randint(0, high=y_lim, size=(neuron_count)))
+    z_coords = np.vstack(np.random.randint(0, high=z_lim, size=(neuron_count)))
 
     neuron_coords = np.hstack((x_coords, y_coords, z_coords))
 

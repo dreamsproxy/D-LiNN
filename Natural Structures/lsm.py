@@ -128,26 +128,24 @@ class Network:
 
         coordinates = dict()
         coordinates_dump = dict()
-        input_points = generate_grids(256, 256, 1024, s = 256, r = self.n_inputs)
+        input_points = generate_grids(256, 256, -100, s = 256, r = self.n_inputs)
         input_points = np.reshape(input_points, (input_points.shape[0] * input_points.shape[1], 3))
         for i in range(self.n_inputs):
             self.LIFNeurons[f"Alpha {i}"] = LIF(
                 i, trim_lim=self.hist_lim, lif_init = self.lif_init,
                 verbose_log=self.verbose_logging)
-            #print(i)
-            #print(input_points[i])
             f = str(tuple(input_points[i])).replace("(", "").replace(")", "")
             coordinates[f"Alpha {i}"] = input_points[i]
             coordinates_dump[f"Alpha {i}"] = f
             
 
         neuron_points = random_coords(self.n_neurons, x_lim=1024, y_lim=1024, z_lim=512)
-        for i in range(self.n_neurons):
+        for i in range(0, self.n_neurons):
             self.LIFNeurons[str(i)] = LIF(
                 i, trim_lim=self.hist_lim, lif_init = self.lif_init,
                 verbose_log=self.verbose_logging)
             f = str(tuple(neuron_points[i])).replace("(", "").replace(")", "")
-            coordinates[str(i)] = input_points[i]
+            coordinates[str(i)] = neuron_points[i]
             coordinates_dump[str(i)] = f
 
         self.n_neurons += self.image_sensor.n_sensors
@@ -389,10 +387,10 @@ class Network:
 
 if __name__ == "__main__":
     snn = Network(
-        n_neurons = 64,
+        n_neurons = 1024,
         lif_init = "random",
         w_init="default",
-        hist_lim=21,
+        hist_lim=17,
         verbose_logging = True,
         image_input=True)
     coords_dict, coords_dump = snn.InitNetwork()
@@ -409,7 +407,7 @@ if __name__ == "__main__":
     snn.weightsclass.postprocess()
     snn.weightsclass.PrintMatrix()
 
-    snn.RunVision(1)
+    snn.RunVision(4)
     snn.SaveWeightTables()
 
     # Dump cols and rows
