@@ -11,3 +11,5 @@ prototype**/
 **/__pycache__/
 **.pyc
 **coordinates.json
+*.json
+Natural Structures/coordinates.json
