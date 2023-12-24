@@ -1,0 +1,83 @@
+
+Step 0 [START]
+	Input Current Detected!
+	All Neuron Keys:
+		['Alpha 0', 'Alpha 1', 'Alpha 2', 'Alpha 3', 'Alpha 4', 'Alpha 5', 'Alpha 6', 'Alpha 7', 'Alpha 8', 'Alpha 9', 'Alpha 10', 'Alpha 11', 'Alpha 12', 'Alpha 13', 'Alpha 14', 'Alpha 15', 'Alpha 16', 'Alpha 17', 'Alpha 18', 'Alpha 19', 'Alpha 20', 'Alpha 21', 'Alpha 22', 'Alpha 23', 'Alpha 24', 'Alpha 25', 'Alpha 26', 'Alpha 27', 'Alpha 28', 'Alpha 29', 'Alpha 30', 'Alpha 31', 'Alpha 32', 'Alpha 33', 'Alpha 34', 'Alpha 35', 'Alpha 36', 'Alpha 37', 'Alpha 38', 'Alpha 39', 'Alpha 40', 'Alpha 41', 'Alpha 42', 'Alpha 43', 'Alpha 44', 'Alpha 45', 'Alpha 46', 'Alpha 47', 'Alpha 48', 'Alpha 49', 'Alpha 50', 'Alpha 51', 'Alpha 52', 'Alpha 53', 'Alpha 54', 'Alpha 55', 'Alpha 56', 'Alpha 57', 'Alpha 58', 'Alpha 59', 'Alpha 60', 'Alpha 61', 'Alpha 62', 'Alpha 63', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '60', '61', '62', '63']
+	Normal Step [START]
+		Update: input neuron 0
+		Update: neuron 1
+		Update: neuron 2
+		Update: neuron 3
+		Update: neuron 4
+		Update: neuron 5
+		Update: neuron 6
+		Update: neuron 7
+		Update: neuron 8
+		Update: neuron 9
+		Update: neuron 10
+		Update: neuron 11
+		Update: neuron 12
+		Update: neuron 13
+		Update: neuron 14
+		Update: neuron 15
+		Update: neuron 16
+		Update: neuron 17
+		Update: neuron 18
+		Update: neuron 19
+		Update: neuron 20
+		Update: neuron 21
+		Update: neuron 22
+		Update: neuron 23
+		Update: neuron 24
+		Update: neuron 25
+		Update: neuron 26
+		Update: neuron 27
+		Update: neuron 28
+		Update: neuron 29
+		Update: neuron 30
+		Update: neuron 31
+		Update: neuron 32
+		Update: neuron 33
+		Update: neuron 34
+		Update: neuron 35
+		Update: neuron 36
+		Update: neuron 37
+		Update: neuron 38
+		Update: neuron 39
+		Update: neuron 40
+		Update: neuron 41
+		Update: neuron 42
+		Update: neuron 43
+		Update: neuron 44
+		Update: neuron 45
+		Update: neuron 46
+		Update: neuron 47
+		Update: neuron 48
+		Update: neuron 49
+		Update: neuron 50
+		Update: neuron 51
+		Update: neuron 52
+		Update: neuron 53
+		Update: neuron 54
+		Update: neuron 55
+		Update: neuron 56
+		Update: neuron 57
+		Update: neuron 58
+		Update: neuron 59
+		Update: neuron 60
+		Update: neuron 61
+		Update: neuron 62
+		Update: neuron 63
+	These Neurons Fired: ['Alpha 0', 'Alpha 2', 'Alpha 3', 'Alpha 5', 'Alpha 7', 'Alpha 8', 'Alpha 9', 'Alpha 11', 'Alpha 13', 'Alpha 17', 'Alpha 19', 'Alpha 23', 'Alpha 25', 'Alpha 36', 'Alpha 42', 'Alpha 44', 'Alpha 46', 'Alpha 47', 'Alpha 50', 'Alpha 58', 'Alpha 60', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '60', '61', '62', '63']
+	Normal Step [ENDED]
+	GLOBAL HEBBIAN WEIGHT OPT [START]
+	GLOBAL HEBBIAN WEIGHT OPT [ENDED]
+		TOOK 0.328125
+	Weight Normalization [START]
+	Weight Normalization [ENDED]
+		TOOK 0.0
+	Weight Logging [START]
+	Weight Logging [ENDED]
+Step 0 [END]
+
+Step 0 TOOK 0.359375

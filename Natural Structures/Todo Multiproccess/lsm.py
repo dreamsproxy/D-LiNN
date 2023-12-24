@@ -86,7 +86,7 @@ class WeightMatrix:
             e = "\n\n\tWeight init only takes 'zeros' or 'random'!\n\tDefault is zero.\n"
             raise Exception(e)
         self.matrix = pd.DataFrame(self.matrix, columns=neuron_keys, index=neuron_keys)
-    
+
     # postproccess essentially removes the below types of connections:
     #   Input -> Input
     #   Itself -> itself (Recurrent)
@@ -109,6 +109,7 @@ class Network:
     def __init__(self,
                  n_neurons: int,
                  image_input: bool,
+                 resolution: int,
                  lif_init: str = "default",
                  w_init: str = "default",
                  hist_lim: int = 10,
@@ -128,6 +129,7 @@ class Network:
         # If False, change input_neurons: list in class method: "step()"
         # If False, remove "step_vision()" calls
         self.image_input    = image_input
+        self.resolution     = resolution
 
         self.w_init         = w_init
         self.weight_log     = []
@@ -150,7 +152,7 @@ class Network:
         
         # Initialize data reduction system: See file ./Conv2D.py
         self.image_sensor = Conv2D.Conv2D(
-            resolution = 256, kernel_size = 3)
+            resolution = self.resolution, kernel_size = 3)
         self.n_inputs = self.image_sensor.n_sensors
 
         # Generating key : coordinate pairs for visualization
@@ -367,20 +369,14 @@ class Network:
     def RunVision(self, ticks):
         import cv2
         images = []
-        from glob import glob
-        for path in glob("./SAMPLES/**"):
-            img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-            images.append(cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR))
+
+        img = cv2.imread("sample.png", cv2.IMREAD_GRAYSCALE)
+        img = cv2.resize(img, (self.resolution, self.resolution), interpolation=cv2.INTER_LINEAR)
         
         current_data = utils.to_current(img)
         current_vector = utils.to_vector(current_data)
         img_ticker = 0
         for i in tqdm(range(ticks)):
-            if img_ticker >= len(images):
-                img_ticker = 0
-                img = images[img_ticker]
-            else:
-                img = images[img_ticker]
             fired_cache = self.step_vision(current_vector)
             input_data = np.float64(-55.0)
             self.step(i, input_current = input_data,
@@ -389,7 +385,6 @@ class Network:
 
     def SaveWeightTables(self, mode = "npy"):
         if mode == "npy":
-            print(self.weight_log[-1])
             total_ticks = len(self.weight_log)
             self.weight_log = np.asarray(self.weight_log)
             np.reshape(self.weight_log, (total_ticks, self.n_neurons, self.n_neurons))
@@ -427,7 +422,8 @@ if __name__ == "__main__":
         w_init="default",
         hist_lim=21,
         verbose_logging = True,
-        image_input=True)
+        image_input=True,
+        resolution=256)
     coords_dict, coords_dump = snn.InitNetwork()
     # Dump ID : Coord pair to json
     with open("coordinates.json", "w") as outfile:
@@ -439,7 +435,7 @@ if __name__ == "__main__":
             if k2 != k1:
                 dst = distance.euclidean(coords_dict[k2], coords_dict[k1])
                 snn.weight_matrix[k2][k1] = dst
-    snn.weightsclass.postprocess()
+    snn.weightsclass.postproccess()
     snn.weightsclass.PrintMatrix()
 
     snn.RunVision(1)
