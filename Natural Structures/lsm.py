@@ -9,6 +9,7 @@ import utils
 from seed_generators import random_coords, generate_grids
 from scipy.spatial import distance
 import json
+
 class LIF:
     def __init__(self, neuron_id: str, lif_init: str = "default", trim_lim: int = 10, verbose_log: bool = False) -> None:
         self.neuron_id = neuron_id
@@ -78,7 +79,7 @@ class WeightMatrix:
             e = "\n\n\tWeight init only takes 'zeros' or 'random'!\n\tDefault is zero.\n"
             raise Exception(e)
         self.matrix = pd.DataFrame(self.matrix, columns=neuron_keys, index=neuron_keys)
-    
+
     def postprocess(self):
         for k1 in self.neuron_keys:
             for k2 in self.neuron_keys:
@@ -97,39 +98,74 @@ class Network:
     def __init__(self,
                  n_neurons: int,
                  image_input: bool,
+                 resolution: int,
                  lif_init: str = "default",
                  w_init: str = "default",
                  hist_lim: int = 10,
                  verbose_logging:bool = False) -> None:
 
+        # Network Parameters
         self.hebbian_lr     = np.float64(0.001)
         self.weight_decay   = np.float64(0.0005)
         self.weight_penalty = np.float64(0.5)
 
         self.n_neurons      = n_neurons
+        
+        # Where all neuron's keys and their LIF objects (KEY : child object)
         self.LIFNeurons     = dict()
+        
+        # Boolean, change to False and there will be no input image
+        # If False, change input_neurons: list in class method: "step()"
+        # If False, remove "step_vision()" calls
         self.image_input    = image_input
+        self.resolution     = resolution
 
         self.w_init         = w_init
-        self.weight_log     = []
+        self.weight_log     = list()
         
+        # Essentially a backlog / to-do list for the network
+        # If any neurons fired at step 0 completion:
+        #       At next step, these neurons will be simulated first
         self.signal_cache   = dict()
 
+        # Neuron parameters
         self.hist_lim       = hist_lim
         self.lif_init       = lif_init
 
         self.verbose_logging = verbose_logging
         self.step_debug_log = []
+        self.init_debug_log = []
 
     def InitNetwork(self):
+        init_start = process_time()
+        self.init_debug_log.append("\n[START] Network Initialization\n")
+        self.init_debug_log.append("\t[SUB START] Spatial Sensor Setup\n")
+        
+        t_start = process_time()
         self.image_sensor = Conv2D.Conv2D(
             resolution = 256, kernel_size = 3)
         self.n_inputs = self.image_sensor.n_sensors
-
+        t_end = process_time()
+        self.init_debug_log.append("\t[SUB END] Spatial Sensor Setup\n")
+        self.init_debug_log.append(f"\t\t[TIME] took {t_end - t_start}!\n\n")
+        del t_start
+        del t_end
+        
+        self.init_debug_log.append("\t[SUB START] Input Coordinates Generation\n")
+        t_start = process_time()
         coordinates = dict()
         coordinates_dump = dict()
         input_points = generate_grids(256, 256, -100, s = 256, r = self.n_inputs)
         input_points = np.reshape(input_points, (input_points.shape[0] * input_points.shape[1], 3))
+        t_end = process_time()
+        self.init_debug_log.append("\t[SUB ENDED] Input Coordinates Generation\n")
+        self.init_debug_log.append(f"\t\t[TIME] took {t_end - t_start}!\n\n")
+        del t_start
+        del t_end
+        
+        self.init_debug_log.append("\t[SUB START] Populating: Sensors\n")
+        t_start = process_time()
+        coordinates = dict()
         for i in range(self.n_inputs):
             self.LIFNeurons[f"Alpha {i}"] = LIF(
                 i, trim_lim=self.hist_lim, lif_init = self.lif_init,
@@ -137,8 +173,15 @@ class Network:
             f = str(tuple(input_points[i])).replace("(", "").replace(")", "")
             coordinates[f"Alpha {i}"] = input_points[i]
             coordinates_dump[f"Alpha {i}"] = f
-            
+        t_end = process_time()
+        self.init_debug_log.append("\t[SUB ENDED] Input Coordinates Generation\n")
+        self.init_debug_log.append(f"\t\t[TIME] took {t_end - t_start}!\n\n")
+        del t_start
+        del t_end
+        
 
+        self.init_debug_log.append("\t[SUB START] Populating: Neurons\n")
+        t_start = process_time()
         neuron_points = random_coords(self.n_neurons, x_lim=1024, y_lim=1024, z_lim=512)
         for i in range(0, self.n_neurons):
             self.LIFNeurons[str(i)] = LIF(
@@ -147,14 +190,29 @@ class Network:
             f = str(tuple(neuron_points[i])).replace("(", "").replace(")", "")
             coordinates[str(i)] = neuron_points[i]
             coordinates_dump[str(i)] = f
-
+        t_end = process_time()
+        self.init_debug_log.append("\t[SUB ENDED] Populating: Neurons\n")
+        self.init_debug_log.append(f"\t\t[TIME] took {t_end - t_start}!\n\n")
+        del t_start
+        del t_end
+        
+        self.init_debug_log.append("\t[SUB START] WEIGHT MATRIX\n")
+        t_start = process_time()
         self.n_neurons += self.image_sensor.n_sensors
         self.neuron_keys = list(self.LIFNeurons.keys())
-
         self.weightsclass = WeightMatrix(self.neuron_keys, self.w_init)
+        self.weightsclass.postprocess()
         self.weightsclass.PrintMatrix()
         self.weight_matrix = self.weightsclass.matrix
-
+        t_end = process_time()
+        self.init_debug_log.append("\t[SUB ENDED] WEIGHT MATRIX\n")
+        self.init_debug_log.append(f"\t\t[TIME] took {t_end - t_start}!\n\n")
+        del t_start
+        del t_end
+        
+        init_ended = process_time()
+        self.init_debug_log.append("[ENDED] Network Initialization\n")
+        self.init_debug_log.append(f"\\t[TIME] took {init_ended - init_start}!\n\n")
         return coordinates, coordinates_dump
 
     def get_correlation_term(self, n1: str, n2: str):
@@ -300,7 +358,7 @@ class Network:
         # Copy weight matrix to a logger
         if self.verbose_logging:
             self.step_debug_log.append(f"\n\tWeight Logging [START]")
-        self.weight_log.append(np.copy(self.weight_matrix.to_numpy()))
+        self.weight_log.append(list(np.copy(self.weight_matrix.to_numpy())))
         if self.verbose_logging:
             self.step_debug_log.append(f"\n\tWeight Logging [ENDED]")
 
@@ -336,7 +394,7 @@ class Network:
         for path in glob("./SAMPLES/**"):
             img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
             images.append(cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR))
-        
+    
         current_data = utils.to_current(img)
         current_vector = utils.to_vector(current_data)
         img_ticker = 0
@@ -385,15 +443,30 @@ class Network:
         format_cache = np.asarray(format_cache)
         np.save("./neuron_spike_logs.npy", format_cache)
 
+    def cross_calc(self, arg):
+        k2, c2, k1, c1 = arg
+        if "Alpha" in k2 and "Alpha" in k1:
+            pass
+        else:
+            dst = distance.euclidean(c2, c1)
+            self.weight_matrix[k2][k1] = dst
+
 if __name__ == "__main__":
     snn = Network(
-        n_neurons = 1024,
+        n_neurons = 64,
         lif_init = "random",
         w_init="default",
-        hist_lim=17,
+        hist_lim=32,
+        resolution=256,
         verbose_logging = True,
         image_input=True)
     coords_dict, coords_dump = snn.InitNetwork()
+    # Dump ID : Coord pair to json
+    with open("coordinates.json", "w") as outfile:
+        json.dump(coords_dump, outfile)
+
+    snn.init_debug_log.append("[START] WEIGHT PRCOESSING\n")
+    t_start = process_time()
     # Dump ID : Coord pair to json
     with open("coordinates.json", "w") as outfile:
         json.dump(coords_dump, outfile)
@@ -404,10 +477,15 @@ if __name__ == "__main__":
             if k2 != k1:
                 dst = distance.euclidean(coords_dict[k2], coords_dict[k1])
                 snn.weight_matrix[k2][k1] = dst
-    snn.weightsclass.postprocess()
-    snn.weightsclass.PrintMatrix()
 
-    snn.RunVision(4)
+    snn.RunVision(1)
+    snn.SaveWeightTables()
+    t_end = process_time()
+    snn.init_debug_log.append("[ENDED] WEIGHT PRCOESSING\n")
+    snn.init_debug_log.append(f"[TIME] took: {t_end - t_start}")
+    # NESTED FORLOOP TOOK: 11.6875 SECONDS!
+    snn.weightsclass.PrintMatrix()
+    snn.RunVision(1)
     snn.SaveWeightTables()
 
     # Dump cols and rows
@@ -415,6 +493,13 @@ if __name__ == "__main__":
         outfile.write(",".join(snn.neuron_keys))
     with open("debug.log", "w") as outfile:
         for debug_msg in snn.step_debug_log:
+            if isinstance(debug_msg, list):
+                for process_msg in debug_msg:
+                    outfile.writelines(process_msg)
+            else:
+                outfile.writelines(debug_msg)
+    with open("init.perflog", "w") as outfile:
+        for debug_msg in snn.init_debug_log:
             if isinstance(debug_msg, list):
                 for process_msg in debug_msg:
                     outfile.writelines(process_msg)

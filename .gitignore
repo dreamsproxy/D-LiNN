@@ -11,7 +11,7 @@ prototype**/
 **/__pycache__/
 **.pyc
 **coordinates.json
-*.json
+**/*.json
 Natural Structures/coordinates.json
 *.log
 **/ids.txt

@@ -7,7 +7,6 @@ from time import process_time
 import Conv2D
 import utils
 from seed_generators import random_coords, generate_grids
-from scipy.spatial import distance
 import json
 
 class LIF:
@@ -104,6 +103,18 @@ class WeightMatrix:
     def PrintMatrix(self):
         print(self.matrix)
         print(self.matrix.shape)
+
+
+def adjust_weights_local(k1, k2, w, correlation_term, hebbian_lr, weight_decay):
+
+    # Adjusts the weight, that is inside self.weight_matrix
+    # Originally was a lambda func call, but more ops were needed
+    new_w: np.ndarray = np.dot(hebbian_lr, correlation_term)
+    new_w += w
+    new_w *= weight_decay
+
+    return (k1, k2, new_w)
+
 
 class Network:
     def __init__(self,
@@ -312,12 +323,27 @@ class Network:
             self.step_debug_log.append(f"\n\tGLOBAL HEBBIAN WEIGHT OPT [START]")
             hebb_start = process_time()
 
+        
+        # Move correlation term here
+        # Prepare data that can be passed to multiprocessing
         weight_update_key_pairs = []
         for k1 in self.neuron_keys:
             for k2 in self.neuron_keys:
                 if k1 != k2:
-                    weight_update_key_pairs.append((k1, k2, self.adjust_weights))
-        self.hebbian_optimization((self.weight_matrix, weight_update_key_pairs))
+                    weight_update_key_pairs.append((
+                        k1, k2, 
+                        self.weight_matrix.at[k1, k2],
+                        self.get_correlation_term(k1, k2),
+                        self.hebbian_lr,
+                        self.weight_decay,
+                    ))
+        # Modify hebbian_optimization method applied to each
+        # element to use multiprocessing
+        with multiprocessing.Pool() as pool:
+            for result in pool.starmap(adjust_weights_local, weight_update_key_pairs):
+                k1, k2, new_w = result
+                self.weight_matrix.at[k1, k2] = new_w
+
         if self.verbose_logging:
             hebb_end = process_time()
             self.step_debug_log.append(f"\n\tGLOBAL HEBBIAN WEIGHT OPT [ENDED]")
@@ -368,19 +394,23 @@ class Network:
 
     def RunVision(self, ticks):
         import cv2
-        images = []
+        from glob import glob
+        images = [f for f in glob("./SAMPLES/**")]
 
-        img = cv2.imread("sample.png", cv2.IMREAD_GRAYSCALE)
+        img = cv2.imread("./SAMPLES/sample.png", cv2.IMREAD_GRAYSCALE)
         img = cv2.resize(img, (self.resolution, self.resolution), interpolation=cv2.INTER_LINEAR)
         
         current_data = utils.to_current(img)
         current_vector = utils.to_vector(current_data)
         img_ticker = 0
         for i in tqdm(range(ticks)):
-            fired_cache = self.step_vision(current_vector)
+            fired = []
+            with multiprocessing.Pool(10) as pool:
+                for fired_cache in pool.imap_unordered(self.step_vision, (current_vector, )):
+                    fired += fired_cache
             input_data = np.float64(-55.0)
             self.step(i, input_current = input_data,
-                     fired_input_keys=fired_cache)
+                     fired_input_keys=fired)
             img_ticker += 1
 
     def SaveWeightTables(self, mode = "npy"):
@@ -415,6 +445,11 @@ class Network:
         format_cache = np.asarray(format_cache)
         np.save("./neuron_spike_logs.npy", format_cache)
 
+def EuclidianDistance(coord_A, coord_B):
+    dist = [(a - b)**2 for a, b in zip(coord_A, coord_B)]
+    dist = np.sqrt(sum(dist))
+    return dist
+
 if __name__ == "__main__":
     snn = Network(
         n_neurons = 64,
@@ -433,8 +468,9 @@ if __name__ == "__main__":
     for k1 in snn.neuron_keys:
         for k2 in snn.neuron_keys:
             if k2 != k1:
-                dst = distance.euclidean(coords_dict[k2], coords_dict[k1])
-                snn.weight_matrix[k2][k1] = dst
+                dist = EuclidianDistance(coords_dict[k2], coords_dict[k1])
+                snn.weight_matrix[k2][k1] = dist
+
     snn.weightsclass.postproccess()
     snn.weightsclass.PrintMatrix()
 

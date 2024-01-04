@@ -1,5 +1,0 @@
-bottleneck
-cython
-numba
-numexpr
-xarray

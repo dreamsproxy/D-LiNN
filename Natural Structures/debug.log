@@ -68,11 +68,11 @@ Step 0 [START]
 		Update: neuron 61
 		Update: neuron 62
 		Update: neuron 63
-		NO Neurons Fired
+	These Neurons Fired: ['Alpha 0', 'Alpha 1', 'Alpha 2', 'Alpha 3', 'Alpha 5', 'Alpha 6', 'Alpha 7', 'Alpha 8', 'Alpha 11', 'Alpha 13', 'Alpha 14', 'Alpha 20', 'Alpha 23', 'Alpha 25', 'Alpha 30', 'Alpha 32', 'Alpha 37', 'Alpha 38', 'Alpha 40', 'Alpha 43', 'Alpha 44', 'Alpha 47', 'Alpha 56', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '60', '61', '62', '63']
 	Normal Step [ENDED]
 	GLOBAL HEBBIAN WEIGHT OPT [START]
 	GLOBAL HEBBIAN WEIGHT OPT [ENDED]
-		TOOK 0.375
+		TOOK 0.25
 	Weight Normalization [START]
 	Weight Normalization [ENDED]
 		TOOK 0.0
@@ -80,4 +80,4 @@ Step 0 [START]
 	Weight Logging [ENDED]
 Step 0 [END]
 
-Step 0 TOOK 0.375
+Step 0 TOOK 0.28125
