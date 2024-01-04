@@ -10,6 +10,7 @@ opencv-contrib-python
 pandas
 plotly
 pyaudio
+pyflowchart
 scipy
 scikit-learn
 setuptools
