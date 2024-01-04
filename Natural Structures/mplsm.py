@@ -323,7 +323,6 @@ class Network:
             self.step_debug_log.append(f"\n\tGLOBAL HEBBIAN WEIGHT OPT [START]")
             hebb_start = process_time()
 
-        
         # Move correlation term here
         # Prepare data that can be passed to multiprocessing
         weight_update_key_pairs = []
@@ -337,6 +336,7 @@ class Network:
                         self.hebbian_lr,
                         self.weight_decay,
                     ))
+
         # Modify hebbian_optimization method applied to each
         # element to use multiprocessing
         with multiprocessing.Pool() as pool:
@@ -404,10 +404,7 @@ class Network:
         current_vector = utils.to_vector(current_data)
         img_ticker = 0
         for i in tqdm(range(ticks)):
-            fired = []
-            with multiprocessing.Pool(10) as pool:
-                for fired_cache in pool.imap_unordered(self.step_vision, (current_vector, )):
-                    fired += fired_cache
+            fired = self.step_vision(current_vector)
             input_data = np.float64(-55.0)
             self.step(i, input_current = input_data,
                      fired_input_keys=fired)
@@ -459,6 +456,7 @@ if __name__ == "__main__":
         verbose_logging = True,
         image_input=True,
         resolution=256)
+
     coords_dict, coords_dump = snn.InitNetwork()
     # Dump ID : Coord pair to json
     with open("./logs/coordinates.json", "w") as outfile:
