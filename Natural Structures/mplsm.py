@@ -418,20 +418,20 @@ class Network:
             total_ticks = len(self.weight_log)
             self.weight_log = np.asarray(self.weight_log)
             np.reshape(self.weight_log, (total_ticks, self.n_neurons, self.n_neurons))
-            np.save("./weight_logs.npy", self.weight_log)
+            np.save("./logs/weight_logs.npy", self.weight_log)
         else:
             print("No save format was defined, saving in .npy format!")
             total_ticks = len(self.weight_log)
             self.weight_log = np.asarray(self.weight_log)
             np.reshape(self.weight_log, (total_ticks, self.n_neurons, self.n_neurons))
-            np.save("./weight_logs.npy", self.weight_log)
+            np.save("./logsweight_logs.npy", self.weight_log)
 
     def SaveNeuronPotentials(self):
         format_cache = []
         for k in list(self.neuron_keys):
             format_cache.append(np.asarray(self.LIFNeurons[k].V))
         format_cache = np.asarray(format_cache)
-        np.save("./neuron_V_logs.npy", format_cache)
+        np.save("./logsneuron_V_logs.npy", format_cache)
 
     def SaveNeuronSpikes(self):
         # Check if the neurons are logged verbosely
@@ -443,7 +443,7 @@ class Network:
         for k in list(self.neuron_keys):
             format_cache.append(np.asarray(self.LIFNeurons[k].full_spike_log))
         format_cache = np.asarray(format_cache)
-        np.save("./neuron_spike_logs.npy", format_cache)
+        np.save("./logs/neuron_spike_logs.npy", format_cache)
 
 def EuclidianDistance(coord_A, coord_B):
     dist = [(a - b)**2 for a, b in zip(coord_A, coord_B)]
@@ -461,7 +461,7 @@ if __name__ == "__main__":
         resolution=256)
     coords_dict, coords_dump = snn.InitNetwork()
     # Dump ID : Coord pair to json
-    with open("coordinates.json", "w") as outfile:
+    with open("./logs/coordinates.json", "w") as outfile:
         json.dump(coords_dump, outfile)
 
     # Cross Calc
@@ -478,9 +478,9 @@ if __name__ == "__main__":
     snn.SaveWeightTables()
 
     # Dump cols and rows
-    with open("ids.txt", "w") as outfile:
+    with open("./logs/ids.txt", "w") as outfile:
         outfile.write(",".join(snn.neuron_keys))
-    with open("debug.log", "w") as outfile:
+    with open("./logs/debug.log", "w") as outfile:
         for debug_msg in snn.step_debug_log:
             if isinstance(debug_msg, list):
                 for process_msg in debug_msg:
