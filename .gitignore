@@ -14,3 +14,5 @@ prototype**/
 *.json
 Natural Structures/coordinates.json
 *.log
+**/ids.txt
+**/*.perflog
