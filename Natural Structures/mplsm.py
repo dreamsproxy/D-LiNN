@@ -339,7 +339,7 @@ class Network:
 
         # Modify hebbian_optimization method applied to each
         # element to use multiprocessing
-        with multiprocessing.Pool() as pool:
+        with multiprocessing.Pool(processes=10) as pool:
             for result in pool.starmap(adjust_weights_local, weight_update_key_pairs):
                 k1, k2, new_w = result
                 self.weight_matrix.at[k1, k2] = new_w
@@ -349,16 +349,16 @@ class Network:
             self.step_debug_log.append(f"\n\tGLOBAL HEBBIAN WEIGHT OPT [ENDED]")
             self.step_debug_log.append(f"\n\t\tTOOK {hebb_end - hebb_start}")
             self.step_debug_log.append(f"\n\tWeight Normalization [START]")
-
-        norm_start = process_time()
+            norm_start = process_time()
         # Normalize the weights to prevent uncontrolled growth
         self.weight_matrix /= np.max(np.abs(self.weight_matrix))
         # Scale the weights to keep it between 0.0 and 1.0
         self.weight_matrix = (self.weight_matrix-np.min(self.weight_matrix))/(np.max(self.weight_matrix)-np.min(self.weight_matrix))
-        norm_end = process_time()
         if self.verbose_logging:
-            self.step_debug_log.append(f"\n\tWeight Normalization [ENDED]")
-            self.step_debug_log.append(f"\n\t\tTOOK {norm_end - norm_start}")
+            norm_end = process_time()
+            if self.verbose_logging:
+                self.step_debug_log.append(f"\n\tWeight Normalization [ENDED]")
+                self.step_debug_log.append(f"\n\t\tTOOK {norm_end - norm_start}")
 
         # Copy weight matrix to a logger
         if self.verbose_logging:
@@ -449,13 +449,13 @@ def EuclidianDistance(coord_A, coord_B):
 
 if __name__ == "__main__":
     snn = Network(
-        n_neurons = 64,
-        lif_init = "random",
-        w_init="default",
-        hist_lim=21,
+        n_neurons       = 64,
+        lif_init        = "random",
+        w_init          = "default",
+        hist_lim        = 21,
         verbose_logging = True,
-        image_input=True,
-        resolution=256)
+        image_input     = True,
+        resolution      = 256)
 
     coords_dict, coords_dump = snn.InitNetwork()
     # Dump ID : Coord pair to json

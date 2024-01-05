@@ -1,0 +1,61 @@
+################################################################
+Init Network: 3
+    LIFNeurons Accesses:
+        Sensor Init
+        Neuron Init
+        Neuron Keys Population
+        Total: 1 + n_sensors + n_neurons
+
+    WeightMatrix Accesses:
+        Weight Class Init: Fill 0.5
+        Total: 1
+################################################################
+Weight Generation Via Euclidian Distances:
+    LIFNeurons Accesses:
+        None
+        Total: 0
+
+    WeightMatrix Accesses:
+        weightsclass Modification
+        Total: ((n_ids^2) - n_ids)
+
+################################################################
+Weight Postproccess
+    LIFNeurons Accesses:
+        None
+        Total: 0
+
+    WeightMatrix Accesses:
+        weightsclass Modification:
+        Total: ((n_ids^2) - n_ids)
+
+################################################################
+Run Vision:
+    [1] Step Vision:
+        LIFNeurons Accesses:
+            Sensor Update
+            Total: n_sensors
+
+        WeightMatrix Accesses:
+            None
+            Total: 0
+
+    [2] Normal Step:
+        LIFNeurons Accesses:
+            Update via Backlog / signal_cache:
+                n_neurons in backlog
+            Update Neurons:
+                n_neurons -= n_backlog_neurons
+
+        WeightMatrix Accesses:
+            Weight Preparation
+            Global Weight Update
+            Total: (n_ids^2) - (n_ids * 2)
+
+    TOTAL STATS:
+        LIFNeurons Accesses:
+            ((n_neurons * 2) - n_backlog_neurons)
+        WeightMatrix Accesses:
+            Total: (n_ids^2) - (n_ids * 2)
+
+################################################################
