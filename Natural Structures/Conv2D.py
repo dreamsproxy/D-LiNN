@@ -4,13 +4,16 @@ from matplotlib import pyplot as plt
 from sklearn.preprocessing import minmax_scale
 import tqdm
 from glob import glob
+
 class Conv2D:
-    def __init__(self, kernel_size, resolution) -> None:
+    def __init__(self, kernel_size, resolution, n_strides = 1) -> None:
         self.logs = []
         self.first_step = True
         self.kernel_size = (kernel_size, kernel_size)
-        self.strides = 4
-        self.n_sensors = resolution // self.strides
+        self.strides = n_strides
+        self.n_sensors = resolution**2
+        for _ in range(self.strides):
+            self.n_sensors = self.n_sensors // 2
 
         self.kernel = np.random.rand(self.kernel_size[0], self.kernel_size[1])
         self.kernel = -2 + (2 - (-2)) * self.kernel
@@ -40,7 +43,8 @@ class Conv2D:
         )
 
         # Perform intermediate sums
-        intermediate_sum = [].append(np.sum(conv_layer, axis=0))
+        intermediate_sum = []
+        intermediate_sum.append(np.sum(conv_layer, axis=0))
 
         # Add bias to each intermediate sums
         bias_sum = []
@@ -74,6 +78,78 @@ class Conv2D:
 
     def GetLayer(self):
         return self.logs
+
+class Conv2DTranspose:
+    def __init__(self, kernel_size, resolution, n_strides=1):
+        self.logs = []
+        self.first_step = True
+        self.kernel_size = (kernel_size, kernel_size)
+        self.strides = n_strides
+        self.n_sensors = resolution ** 2
+        for _ in range(self.strides):
+            self.n_sensors = self.n_sensors * 2  # Change division to multiplication for upsampling
+
+        self.kernel = np.random.rand(self.kernel_size[0], self.kernel_size[1])
+        self.kernel = -2 + (2 - (-2)) * self.kernel
+
+        self.bias = -2 + (2 - (-2)) * np.random.rand(1)
+
+    def cross_correlation(self, img):
+        img_height, img_width = img.shape
+        kernel_height, kernel_width = self.kernel.shape
+        output_height = (img_height - 1) * self.strides + kernel_height  # Adjust the output size for upsampling
+        output_width = (img_width - 1) * self.strides + kernel_width
+        output = np.zeros((output_height, output_width))
+        for i in range(img_height):
+            for j in range(img_width):
+                output[
+                    i * self.strides : i * self.strides + kernel_height,
+                    j * self.strides : j * self.strides + kernel_width,
+                ] += img[i, j] * self.kernel  # Accumulate instead of sum
+        return output
+
+    def Call(self, input_image):
+        img = np.pad(input_image, ((1, 1), (1, 1)), mode="constant")
+        conv_layer = []
+        conv_layer.append(
+            self.cross_correlation(img)
+        )
+
+        # Perform intermediate sums
+        intermediate_sum = []
+        intermediate_sum.append(np.sum(conv_layer, axis=0))
+
+        # Add bias to each intermediate sum
+        bias_sum = []
+        for i in range(1):
+            bias_sum.append(intermediate_sum[i] + self.bias[i])
+
+        bias_sum = np.asarray(bias_sum)
+
+        # Turn list into np.array and transposed to match input structure
+        out_img = np.transpose(np.array(bias_sum), (1, 2, 0))
+        biased_img = np.reshape(out_img, (out_img.shape[0], out_img.shape[1]))
+
+        if self.first_step == False:
+            old_img = np.reshape(self.logs[-1], (self.logs[-1].shape[0], self.logs[-1].shape[1]))
+
+            delta = np.subtract(biased_img, old_img)
+            delta = np.sum([old_img, delta], axis=0)
+            self.logs.append(delta)
+        else:
+            self.logs.append(biased_img)
+        self.first_step = False
+        return biased_img
+
+    def Get(self, last_only: bool):
+        if last_only:
+            return self.logs[-1]
+        else:
+            return self.logs
+
+    def GetLayer(self):
+        return self.logs
+
 
 def main(epochs):
     # Load imgs
