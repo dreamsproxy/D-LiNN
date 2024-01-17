@@ -1,20 +1,23 @@
 import numpy as np
 import cv2
-from matplotlib import pyplot as plt
+from matplotlib import axis, pyplot as plt
 from sklearn.preprocessing import minmax_scale
+import math
 
+def generate_grids(z, r, scale):
+    x_lim = int(math.sqrt(r))
+    y_lim = int(math.sqrt(r))
 
-def generate_grids(x_dim, y_dim, z_dim, s, r):
-    x_c = x_dim//2
-    y_c = y_dim//2
-    x, y = np.mgrid[x_c-s:x_c+s:r, y_c-s:y_c+s:r]
-    #x, y = np.mgrid[x_c-r:x_c+r:r, y_c-r:y_c+r:r]
-    
-    z = np.zeros((len(x), len(y)))
-    z += z_dim
-    coordinates = np.stack((x, y, z), axis=-1).astype(int)
+    x_c = minmax_scale(np.linspace(0.0, 1.0, x_lim), feature_range=(0.0, scale))
+    y_c = minmax_scale(np.linspace(0.0, 1.0, y_lim), feature_range=(0.0, scale))
+    coords = []
+    for x in x_c:
+        for y in y_c:
+            
+            coords.append(np.array([x, y, z]))
+    coords = np.asarray(coords)
 
-    return coordinates
+    return coords
 
 def random_coords(neuron_count: int = 256, max_size: int = 0,
                 x_lim: int = 256, y_lim: int = 256, z_lim: int = 256):
@@ -23,9 +26,9 @@ def random_coords(neuron_count: int = 256, max_size: int = 0,
         y_lim = max_size
         z_lim = max_size
 
-    x_b = (0 - int(x_lim//2), x_lim//2)
-    y_b = (0 - int(y_lim//2), y_lim//2)
-    z_b = (0 - int(z_lim//2), z_lim//2)
+    x_b = (0, x_lim)
+    y_b = (0, y_lim)
+    z_b = (0, z_lim)
     #Generate random coordinates within (size, size, size)
     x_coords = np.vstack(
         np.random.randint(x_b[0], high=x_b[1], size=(neuron_count)))

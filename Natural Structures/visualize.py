@@ -5,10 +5,10 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 import plotly.graph_objects as go
 
-def WeightMatrix(path = "./weight_logs.npy", trim_last: int = 0):
+def WeightMatrix(path = "./logs/weight_logs.npy", trim_last: int = 0):
     weight_logs = []
     weight_matrix = np.load(path)
-    with open("ids.txt", "r") as infile:
+    with open("./logs/ids.txt", "r") as infile:
         neuron_ids = infile.read().split(",")
     if trim_last >= 1:
         weight_matrix = weight_matrix[trim_last:-1]
@@ -60,12 +60,11 @@ def WeightMatrix(path = "./weight_logs.npy", trim_last: int = 0):
     )
     fig['layout']['yaxis']['autorange'] = "reversed"
     fig.show()
-    raise
 
 def NeuronSpikes(file_type = ".npy"):
     import plotly.express as px
-    spikes = np.load("./neuron_spike_logs.npy")
-    with open("ids.txt", "r") as infile:
+    spikes = np.load("./logs/neuron_spike_logs.npy")
+    with open("./logs/ids.txt", "r") as infile:
         ids = infile.read().split(",")
 
     # Convert to dataframe
@@ -77,8 +76,8 @@ def NeuronSpikes(file_type = ".npy"):
 
 def NeuronPotentials():
     import plotly.express as px
-    potentials = np.load("./neuron_V_logs.npy")
-    with open("ids.txt", "r") as infile:
+    potentials = np.load("./logs/neuron_V_logs.npy")
+    with open("./logs/ids.txt", "r") as infile:
         ids = infile.read().split(",")
 
     # Convert to dataframe
@@ -95,88 +94,14 @@ def NeuronPotentials():
     )
     fig.show()
 
-def Network(path = "./weight_logs.npy"):
-    import igraph as ig
-    def GenerateCoords(cx, cy, cz, radius, n_nodes=360):
-        phi = np.linspace(0, 2 * np.pi, n_nodes)
-        theta = np.linspace(0, np.pi, n_nodes)
-
-        #theta, phi = np.meshgrid(theta, phi)
-
-        x = radius * np.cos(theta) * np.sin(phi)
-        y = radius * np.sin(theta) * np.sin(phi)
-        z = radius * np.cos(phi)
-        return x, y, z
-        
-    weight_matrix = np.load(path)
-    
-    neuron_ids = [i for i in range(weight_matrix.shape[1])]
-    link_map = {}
-    Edges = []
-    
-    for n1 in neuron_ids:
-        link_pairs = []
-        for n2 in neuron_ids:
-            if n1 != n2:
-                link_pairs.append(n2)
-        link_map[n1] = link_pairs
-    
-    for i in neuron_ids:
-        pairs = link_map[i]
-        for target in pairs:
-            Edges.append((i, target))
-
-    G = ig.Graph(Edges, directed=False)
-    layt=G.layout('sphere', dim=3)
-
-    x, y, z = GenerateCoords(0.5, 0.5, 0.5, radius=0.3, n_nodes=len(neuron_ids))
-    
-    for i in range(len(neuron_ids)):
-        layt[i][0] = x[i]
-        layt[i][1] = y[i]
-        layt[i][2] = z[i]
-
-    link_coords = []
-
-    for i in range(len(neuron_ids)):
-        link_coords.append((x[i], y[i], z[i]))
-    
-        
-    # TODO
-    # Get only the link cords where the weights are more than 0.09
-    node_points = go.Scatter3d(
-        x=x,
-        y=y,
-        z=z,
-        mode='markers',
-        name='actors',
-        marker = go.Marker(
-            symbol='circle',
-            size=13,
-            colorscale="viridis",
-            opacity = 0.8),
-        text=neuron_ids,
-        hoverinfo='text'  
-    )
-    
-    fig = go.Figure(data=node_points)
-    for start in link_coords:
-        for end in link_coords:
-            fig.add_trace(
-                go.Scatter3d(
-                    x=[start[0], end[0]], 
-                    y=[start[1], end[1]], 
-                    z=[start[2], end[2]],
-                    mode='lines',
-                    showlegend=False,
-                    hoverinfo='none',
-                    name=""
-                ),
-            )
-
-    fig.show()
+def output():
+    array = np.load("./output.npy")
+    print(array)
+    plt.imshow(array, cmap="gray")
+    plt.show()
 if __name__ == "__main__":
     WeightMatrix()
-    #NeuronSpikes()
     #NeuronPotentials()
-    #Network()
+    #NeuronSpikes()
+    
+    #output()
