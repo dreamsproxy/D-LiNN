@@ -1,5 +1,5 @@
 import numpy as np
-from vispy import scene, app
+from vispy import scene, app, visuals
 import pandas as pd
 import json
 
@@ -31,6 +31,10 @@ def to_dict(weight_logs):
                 del temp_dict[nest_k]
             if "Output " in nest_k and "Output " in k:
                 del temp_dict[nest_k]
+            if "Input " in nest_k and "Output " in k:
+                del temp_dict[nest_k]
+            if "Output " in nest_k and "Input " in k:
+                del temp_dict[nest_k]
         temp_dict = {str(ke):np.float16(v) for ke, v in temp_dict.items() if v != np.nan}
         try:
             del temp_dict[str(k)]
@@ -53,12 +57,12 @@ def adjust_coordinates(coordinates, nested_weights):
     nodes = list(coordinates.keys())
     node_positions = np.array(list(coordinates.values()))
     for source, targets in nested_weights.items():
-        if "Input " not in source and "Output" not in source:
+        if "Input " not in source or "Output " not in source:
             source_index = nodes.index(source)
             for target, weight in targets.items():
-                if weight != 0.0:
+                if weight >= 0.9:
                     target_index = nodes.index(target)
-                    node_positions[source_index] += (node_positions[target_index] - node_positions[source_index]) * np.float16(np.float16(weight / np.float16(2)))
+                    node_positions[source_index] += (node_positions[target_index] - node_positions[source_index]) * np.float16(weight)
 
     return dict(zip(nodes, node_positions))
 
@@ -74,15 +78,39 @@ nodes = list(coordinates.keys())
 #node_positions = np.multiply(np.array(list(coordinates.values())), 1.5)
 node_positions = np.array(list(coordinates.values()))
 
+
 edges = []
 for source, targets in nested_weights.items():
     for target, weight in targets.items():
-        if weight >= 0.55:
-            edges.append((nodes.index(source), nodes.index(target)))
-canvas = scene.SceneCanvas(keys='interactive', bgcolor='black', size=(1080, 720), show=True)
+        edges.append((nodes.index(source), nodes.index(target)))
+canvas = scene.SceneCanvas(keys='interactive', bgcolor='white', size=(1080, 720), show=True)
+
+def on_key_press(event):
+    """Callback function for key presses."""
+    if event.key == 'R':
+        # Reset the view to the original positions
+        view.camera.center = np.mean(node_positions, axis=0)
+    elif event.key == 'Right':
+        # Rotate the view to the right
+        view.camera.azimuth+=2.0  # Adjust the rotation angle as needed
+        canvas.update()
+    elif event.key == 'Left':
+        # Rotate the view to the left
+        view.camera.azimuth-=2.0  # Adjust the rotation angle as needed
+        canvas.update()
+    elif event.key == 'Up':
+        # Rotate the view to the left
+        view.camera.elevation+=2.0  # Adjust the rotation angle as needed
+        canvas.update()
+    elif event.key == 'Down':
+        # Rotate the view to the left
+        view.camera.elevation-=2.0  # Adjust the rotation angle as needed
+        canvas.update()
+# Connect the key press event to the callback function
+canvas.events.key_press.connect(on_key_press)
 
 view = canvas.central_widget.add_view()
-view.camera = 'arcball'
+view.camera = 'turntable'
 
 # Set the center of the camera to a specific point
 center_point = np.mean(node_positions, axis=0)  # Set center to the mean of node positions
@@ -90,13 +118,12 @@ view.camera.center = center_point
 
 # Create nodes
 scatter = scene.visuals.Markers()
-scatter.set_data(node_positions, edge_color='white', face_color='white', size=12)
+scatter.set_data(node_positions, edge_color='black', face_color='black', size=12)
 view.add(scatter)
 
 # Create edges
-lines = scene.visuals.Line(pos=np.array(node_positions), color='blue')
+lines = scene.visuals.Line(pos=np.array(node_positions), color=(0.0, 0.0, 0.0, 0.5))
 lines.set_data(node_positions[edges], width=0.001)
-#lines.set_data(node_positions[edges, 0], node_positions[edges, 1])  # Adjusted line to properly extract data
 view.add(lines)
 
 if __name__ == '__main__':

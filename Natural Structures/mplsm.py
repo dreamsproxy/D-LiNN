@@ -14,9 +14,11 @@ import pickle
 import numpy as np
 import mpmath
 import random
+from sklearn.preprocessing import minmax_scale
+np.seterr(all='raise')
 rng = np.random.default_rng()
 class LIF:
-    def __init__(self, neuron_id: str, lif_init: str = "default", trim_lim: int = 10, refractory_period: int = 5, verbose_log: bool = False) -> None:
+    def __init__(self, neuron_id: str, lif_init: str = "default", trim_lim: int = 10, refractory_period: int = 1, verbose_log: bool = False) -> None:
         self.neuron_id = neuron_id
         self.lif_init = lif_init
         # Define simulation parameters
@@ -29,7 +31,7 @@ class LIF:
             self.tau_m = np.float16(rng.uniform(1.0, 2.000))  # Membrane time constant
             self.V_reset = np.float16(rng.uniform(-80.0, -70.0))  # Reset voltage
             self.threshold = np.float16(rng.uniform(-50.0, -40.0))  # Spike threshold
-            self.refractory_period = rng.integers(0, 5)
+            self.refractory_period = rng.integers(0, 1)
 
         self.threshold_factor = np.float16(1.0)
         self.remaining_refractory_time = 0
@@ -73,10 +75,7 @@ class LIF:
             self.remaining_refractory_time -= 1
             delta_V = (current_input - self.V_reset) / self.tau_m
             self.V.append(self.V_reset + delta_V * self.dt / self.tau_m)
-            self.spike_log.append(self.V_reset)
             self.spike_bool = False
-            if self.verbose_log:
-                self.full_spike_log.append(self.V_reset)
         else:
             # In refractory period
             self.remaining_refractory_time = self.refractory_period
@@ -87,15 +86,10 @@ class LIF:
                 
                 self.spike_log.append(self.threshold)
                 self.spike_bool = True
-                if self.verbose_log:
-                    self.full_spike_log.append(self.threshold)
                 # Enter refractory period
                 self.remaining_refractory_time = self.refractory_period
             else:
-                self.spike_log.append(self.V_reset)
                 self.spike_bool = False
-                if self.verbose_log:
-                    self.full_spike_log.append(self.V_reset)
 
         # Trim the spike log
         if len(self.spike_log) >= self.trim_lim:
@@ -193,19 +187,16 @@ class Network:
 
     def InitNetwork(self, n_inputs: int = 16):
         self.n_inputs = n_inputs
-        self.resolution = self.resolution ** 2
         self.n_layers = 0
         self.key_map = dict()
         
 
-        r = self.resolution
+        r = self.resolution ** 2
         s = 2
-        for i in range(128):
-            r = r // s
-            if r == n_inputs:
-                break
-            else:
-                self.n_layers += 1
+        target_r = np.sqrt(self.n_inputs)
+        while r != target_r:
+            r /= 2
+            self.n_layers+= 1
         self.n_layers = int(self.n_layers - 1 ) // 2
 
         # Generating key : coordinate pairs for visualization
@@ -223,7 +214,7 @@ class Network:
             coordinates_dump[f"Input {i}"] = f
             self.input_keys.append(f"Input {i}")
 
-        neuron_points = random_coords(self.n_neurons, x_lim=1000, y_lim=1000, z_lim=1500)
+        neuron_points = random_coords(self.n_neurons, x_lim=1000, y_lim=1000, z_lim=1800)
         for i in range(self.n_neurons):
             self.LIFNeurons[str(i)] = LIF(
                 i, trim_lim=self.hist_lim, lif_init = self.lif_init,
@@ -234,7 +225,7 @@ class Network:
 
         if self.image_output:
             self.n_outputs = self.n_inputs
-            output_coords = generate_grids(-500, self.n_outputs, scale=1000)
+            output_coords = generate_grids(-200, self.n_outputs, scale=1000)
             for i in range(self.n_outputs):
                 self.LIFNeurons[f"Output {i}"] = LIF(
                     i, trim_lim=self.hist_lim, lif_init = self.lif_init,
@@ -258,40 +249,23 @@ class Network:
 
         return coordinates, coordinates_dump
 
-    def convert_df_to_shared_array(self, df):
-        array = df.to_numpy()
-        shape = array.shape
-        dtype = array.dtype
-
-        shared_array = multiprocessing.Array(dtype, shape[0] * shape[1])
-        shared_array_np = np.frombuffer(shared_array.get_obj(), dtype=dtype).reshape(shape)
-        np.copyto(shared_array_np, array)
-
-        return shared_array
-
     def get_correlation_term(self, k1: str, k2: str):
         # Calculates the activity correlation between both
         # neurons.
         # Correlatiion term is the bias
         n1 = self.LIFNeurons[self.key_map[k1]].spike_log
         n2 = self.LIFNeurons[self.key_map[k2]].spike_log
-        if len(n1) == len(n2) and len(n1) >= 2:
-            correlation = np.corrcoef(n1, n2)[0, 1]
+        #n1 = minmax_scale(n1, feature_range=(0, 1))
+        #n2 = minmax_scale(n2, feature_range=(0, 1))
+        if len(n1) == len(n2) and len(n1) >= 3:
+            try:
+                correlation = np.corrcoef(n1, n2)
+            except:
+                correlation = 0.0
         else:
             correlation = 0.0
         return (k1, k2, correlation)
 
-    def hebbian(self, k1, k2):
-        k1_log = self.LIFNeurons[k1].spike_log
-        if len(k1_log) > 1:
-            pre_spike = k1_log[-2]
-            post_spike = k1_log[-1]
-
-            pre_neuron_index = k1_log.index(pre_spike)
-            post_neuron_index = k1_log.index(post_spike)
-
-            # Update the synaptic weight between pre and post neurons
-            self.weight_matrix[pre_neuron_index, post_neuron_index] += hebbian_lr
     def BacklogHandler(self, fired_list:list):
         # The backlog handler
         # Called as a data formatter + handler
@@ -431,11 +405,7 @@ class Network:
         values = np.array([value for _, _, value in update_results], dtype=np.float16)
         # Update the array in a vectorized manner
         self.weight_matrix[row_indices, col_indices] = values
-        """
-        for n in tqdm(update_results):
-            k1, k2, new_w = n
-            self.weight_matrix[k1, k2] = new_w
-        """
+
         if self.network_verbose_logging:
             hebb_end = process_time()
             self.step_debug_log.append(f"\nGLOBAL HEBBIAN WEIGHT OPT [ENDED]")
@@ -444,8 +414,7 @@ class Network:
 
         # Normalize the weights to prevent uncontrolled growth
         self.weight_matrix /= np.max(np.abs(self.weight_matrix))
-        # Scale the weights to keep it between 0.0 and 1.0
-        self.weight_matrix = (self.weight_matrix-np.min(self.weight_matrix))/(np.max(self.weight_matrix)-np.min(self.weight_matrix))
+        #self.weight_matrix = (self.weight_matrix-np.min(self.weight_matrix))/(np.max(self.weight_matrix)-np.min(self.weight_matrix))
         if self.network_verbose_logging:
             norm_end = process_time()
             if self.network_verbose_logging:
@@ -492,6 +461,7 @@ class Network:
             img = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
             img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
             layers = dict()
+
             for i in range(self.n_layers):
                 layers[str(i)] =  Conv2D.Conv2D(resolution = self.resolution, kernel_size = 3, n_strides=2)
             output_cache = []
@@ -500,8 +470,6 @@ class Network:
                     output_cache = layers[k].Call(img)
                 else:
                     output_cache = layers[k].Call(output_cache)
-            print(output_cache.shape)
-            raise
 
             img = layers[str(self.n_layers-1)].Get(True)
             img = utils.to_vector(utils.to_current(img))
@@ -576,7 +544,7 @@ if __name__ == "__main__":
     global global_weight_pairs
     global_weight_pairs = []
     snn = Network(
-        n_neurons = 256,
+        n_neurons = 64,
         image_input = True,
         image_output = True,
         resolution = 256,
@@ -586,7 +554,7 @@ if __name__ == "__main__":
         network_verbose_logging = True,
         neuron_verbose_logging = False)
 
-    coords_dict, coords_dump = snn.InitNetwork(n_inputs=8)
+    coords_dict, coords_dump = snn.InitNetwork(n_inputs=16)
     # Dump ID : Coord pair to json
     with open("./logs/coordinates.json", "w") as outfile:
         json.dump(coords_dump, outfile)
@@ -617,22 +585,20 @@ if __name__ == "__main__":
     
     global_weight_pairs = tuple(global_weight_pairs)
     key_pairs = tuple(key_pairs)
-    global mp_chunk
-    mp_chunk = np.rint(np.sqrt(len(global_weight_pairs)))
-    # Pre-pickle global_weight_pairs
-
     global_weight_pairs = pickle.dumps(global_weight_pairs)
-    global_weight_pairs = pickle.loads(global_weight_pairs)
+    #global_weight_pairs = pickle.loads(global_weight_pairs)
+    print(type(global_weight_pairs))
     print("Calculating distances as weight:")
     with multiprocessing.Pool(processes=8) as pool:
         for dist, k1, k2 in tqdm(pool.map(EuclidianDistance, key_pairs)):
             snn.weight_matrix[k2, k1] = dist
     print("Done!")
-    snn.weight_matrix = (snn.weight_matrix-np.min(snn.weight_matrix))/(np.max(snn.weight_matrix)-np.min(snn.weight_matrix))
+    snn.weight_matrix /= np.max(np.abs(snn.weight_matrix))
+    #snn.weight_matrix = (snn.weight_matrix-np.min(snn.weight_matrix))/(np.max(snn.weight_matrix)-np.min(snn.weight_matrix))
     snn.weight_log.append(snn.weight_matrix)
     
     
-    snn.RunVision(1)
+    snn.RunVision(5)
     outputs = []
     for k in snn.neuron_keys:
         if "Output " in k:
@@ -643,7 +609,7 @@ if __name__ == "__main__":
     print(snn.n_neurons)
     sh = np.sqrt(snn.n_outputs)
     output_shape = (int(sh), int(sh), 1)
-    from sklearn.preprocessing import minmax_scale
+    
     outputs = np.reshape(minmax_scale(outputs, feature_range=(0.0, 255.0)), newshape=output_shape)
 
     np.save("output.npy", outputs)
