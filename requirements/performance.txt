@@ -3,3 +3,4 @@ cython
 numba
 numexpr
 xarray
+blosc2
