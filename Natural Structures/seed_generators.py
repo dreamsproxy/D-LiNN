@@ -5,9 +5,9 @@ from sklearn.preprocessing import minmax_scale
 import math
 
 def generate_grids(z, r, scale):
+    #print(z, r, scale)
     x_lim = int(math.sqrt(r))
     y_lim = int(math.sqrt(r))
-
     x_c = minmax_scale(np.linspace(0.0, 1.0, x_lim), feature_range=(0.0, scale))
     y_c = minmax_scale(np.linspace(0.0, 1.0, y_lim), feature_range=(0.0, scale))
     coords = []
