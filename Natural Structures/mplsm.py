@@ -382,12 +382,12 @@ class Network:
         if self.network_verbose_logging:
             self.step_debug_log.append(f"\nGLOBAL HEBBIAN WEIGHT OPT [START]")
             hebb_start = process_time()
+        update_args = []
         # Prepare data that can be passed to multiprocessing
         with multiprocessing.Pool(processes=6) as pool:
             # Example of using shared_weight_matrix in multiprocessing
-            cache_result = pool.starmap_async(self.get_correlation_term, global_weight_pairs)
+            cache_result = pool.starmap_async(self.get_correlation_term, global_weight_pairs, chunksize=32)
             result_args = cache_result.get()
-            update_args = []
             for a in tqdm(result_args):
                 k1, k2, c_term = a
                 if k1 == k2:
@@ -395,6 +395,7 @@ class Network:
                 w = self.weight_matrix[k1, k2]
                 update_args.append((k1, k2, w, c_term))
 
+        with multiprocessing.Pool(processes=6) as pool:
             async_results = pool.starmap_async(adjust_weights_local, update_args)
             update_results = async_results.get()
 
@@ -434,7 +435,7 @@ class Network:
             self.step_debug_log.append(f"\nVision Step [START]")
             vis_step_start = process_time()
         fired_cache = []
-        for i in self.key_map.keys():
+        for i in list(self.key_map.keys()):
             str_id = self.key_map[i]
             if "Input " in str_id:
                 neu = self.LIFNeurons[str_id]
@@ -446,7 +447,6 @@ class Network:
                 self.step_debug_log.append(f"\nVision Step [END]")
                 vis_step_end = process_time()
                 self.step_debug_log.append(f"\n\tTOOK: {vis_step_end - vis_step_start}")
-        
         return fired_cache
 
     def RunVision(self, ticks):
@@ -544,17 +544,17 @@ if __name__ == "__main__":
     global global_weight_pairs
     global_weight_pairs = []
     snn = Network(
-        n_neurons = 64,
+        n_neurons = 128,
         image_input = True,
         image_output = True,
         resolution = 256,
         lif_init = "random",
         w_init = "default",
         hist_lim = 17,
-        network_verbose_logging = True,
+        network_verbose_logging = False,
         neuron_verbose_logging = False)
 
-    coords_dict, coords_dump = snn.InitNetwork(n_inputs=16)
+    coords_dict, coords_dump = snn.InitNetwork(n_inputs=32)
     # Dump ID : Coord pair to json
     with open("./logs/coordinates.json", "w") as outfile:
         json.dump(coords_dump, outfile)
@@ -586,7 +586,7 @@ if __name__ == "__main__":
     global_weight_pairs = tuple(global_weight_pairs)
     key_pairs = tuple(key_pairs)
     global_weight_pairs = pickle.dumps(global_weight_pairs)
-    #global_weight_pairs = pickle.loads(global_weight_pairs)
+    global_weight_pairs = pickle.loads(global_weight_pairs)
     print(type(global_weight_pairs))
     print("Calculating distances as weight:")
     with multiprocessing.Pool(processes=8) as pool:

@@ -18,7 +18,7 @@ def load_weights(path = "./logs/weight_logs.npy"):
     return weight_logs
 
 def to_dict(weight_logs):
-    latest = weight_logs[-1]
+    latest = weight_logs[0]
     ids = list(latest.columns)
     
     weights_dict = dict()
@@ -35,7 +35,7 @@ def to_dict(weight_logs):
                 del temp_dict[nest_k]
             if "Output " in nest_k and "Input " in k:
                 del temp_dict[nest_k]
-        temp_dict = {str(ke):np.float16(v) for ke, v in temp_dict.items() if v != np.nan}
+        temp_dict = {str(ke):np.float32(v) for ke, v in temp_dict.items() if v != np.nan}
         try:
             del temp_dict[str(k)]
         except:
@@ -49,20 +49,26 @@ def load_coords(path = "./logs/coordinates.json"):
         temp_dict = json.load(infile)
     coordinates = dict()
     for id in list(temp_dict.keys()):
-        formated = [np.float16(ax) for ax in temp_dict[id].split(", ")]
+        formated = [np.float32(ax) for ax in temp_dict[id].split(", ")]
         coordinates[id] = tuple(formated)
     return coordinates
 
-def adjust_coordinates(coordinates, nested_weights):
+def adjust_coordinates(coordinates, nested_weights, ignore_z = False):
     nodes = list(coordinates.keys())
     node_positions = np.array(list(coordinates.values()))
     for source, targets in nested_weights.items():
         if "Input " not in source or "Output " not in source:
-            source_index = nodes.index(source)
-            for target, weight in targets.items():
-                if weight >= 0.9:
-                    target_index = nodes.index(target)
-                    node_positions[source_index] += (node_positions[target_index] - node_positions[source_index]) * np.float16(weight)
+            if "Input " not in source and "Output " not in source:
+                source_index = nodes.index(source)
+                for target, weight in targets.items():
+                    #if weight >= 0.66:
+                        target_index = nodes.index(target)
+                        # Maintain Z axis
+                        if ignore_z:
+                            z = node_positions[source_index][2]
+                        node_positions[source_index] += (node_positions[target_index] - node_positions[source_index]) * np.float32(weight) * np.float32(0.1)
+                        if ignore_z:
+                            node_positions[source_index][2] = z
 
     return dict(zip(nodes, node_positions))
 
@@ -75,7 +81,7 @@ coordinates = adjust_coordinates(coordinates, nested_weights)
 # Extract node positions and edges
 nodes = list(coordinates.keys())
 
-#node_positions = np.multiply(np.array(list(coordinates.values())), 1.5)
+node_positions = np.multiply(np.array(list(coordinates.values())), 1.5)
 node_positions = np.array(list(coordinates.values()))
 
 
@@ -110,7 +116,7 @@ def on_key_press(event):
 canvas.events.key_press.connect(on_key_press)
 
 view = canvas.central_widget.add_view()
-view.camera = 'turntable'
+view.camera = 'arcball'
 
 # Set the center of the camera to a specific point
 center_point = np.mean(node_positions, axis=0)  # Set center to the mean of node positions

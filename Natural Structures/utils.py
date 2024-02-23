@@ -12,7 +12,7 @@ def to_current(img: np.ndarray):
     return img_as_current
 
 def to_vector(img: np.ndarray):
-    return img.flatten()
+    return img.flatten(order="C")
 
 def pad_image(img: np.ndarray, k_size: int):
     if len(img.shape) > 2:
