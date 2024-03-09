@@ -96,6 +96,8 @@ def NeuronPotentials():
 
 def OutputActivity():
     import json
+    from sklearn.preprocessing import minmax_scale
+
     with open("./output.json", "r") as jin:
         output_buffer = json.load(jin)
     
@@ -105,9 +107,21 @@ def OutputActivity():
         cache = output_buffer[k]
         cache = cache.split(", ")
         cache = [float(i) for i in cache]
+        cache = [np.float64(i) for i in cache]
         outputs.append(cache)
+    
+    shortest = int(1024)
+    
+    for i in outputs:
+        if len(i) < shortest:
+            shortest = len(i)
+    
+    del cache
 
+    for i, k in enumerate(outputs):
+        outputs[i] = minmax_scale(k[:32], feature_range=(0.0, 255.0))
     outputs = np.array(outputs)
+
     #outputs = (outputs-np.min(outputs))/(np.max(outputs)-np.min(outputs))
     xy = int(np.sqrt(outputs.shape[0]))
     
@@ -125,8 +139,10 @@ def OutputActivity():
                 x=frame.columns,
                 y=frame.index,
                 colorscale="gray",
-                zmax=-35,
-                zmin=-90),
+                zmax=0,
+                zmin=255),
+                #zmax=-35,
+                #zmin=-90),
             name=i)
         for i, frame in enumerate(frames)
     ]
@@ -134,11 +150,14 @@ def OutputActivity():
     fig = go.Figure(data=frames[0].data, frames=frames).update_layout(
         updatemenus=[
             {
-                "buttons": [{"args": [None, {"frame": {"duration": 5, "redraw": True}}],
-                            "label": "Play", "method": "animate",},
-                            {"args": [[None],{"frame": {"duration": 0, "redraw": False},
-                                            "mode": "immediate", "transition": {"duration": 0},},],
-                            "label": "Pause", "method": "animate",},],
+                "buttons": [{
+                    "args": [None, {"frame": {"duration": 5, "redraw": True}}],
+                    "label": "Play", "method": "animate",},{
+                        
+                    "args": [[None], {"frame": {"duration": 0,"redraw": False},
+                        "mode": "immediate", "transition": {"duration": 0},},],
+                    "label": "Pause", "method": "animate",},],
+                
                 "type": "buttons",
             }
         ],
