@@ -42,20 +42,24 @@ class LIF:
             self.tau_m = np.float64(1.5)  # Membrane time constant
             self.V_reset = np.float64(-75.0)  # Reset voltage
             self.threshold = np.float64(-55.0)  # Spike threshold
-            self.refractory_period = refractory_period
         elif lif_init == "random":
-            self.tau_m = np.float64(rng.uniform(0.50, 2.50))  # Membrane time constant
-            self.V_reset = np.float64(rng.uniform(-80.0, -70.0))  # Reset voltage
-            self.threshold = np.float64(rng.uniform(-50.0, -40.0))  # Spike threshold
-            self.refractory_period = rng.integers(0, 1)
-
+            self.tau_m = np.float64(rng.uniform(5.0, 15.0))  # Membrane time constant
+            self.V_reset = np.float64(rng.uniform(-76.0, -74.0))  # Reset voltage
+            self.threshold = np.float64(rng.uniform(-56.0, -54.0))  # Spike threshold
+            #self.refractory_period = rng.integers(0, 1)
+        self.leak_conductance = np.float64(10.0)
+        self.leak_reverse = np.float64(-75.0)
+        self.refractory_period = refractory_period
         self.threshold_factor = np.float64(1.0)
         self.remaining_refractory_time = 0
+        self.refractory_dt = np.float64(2.0)
 
-        self.dt = 0.0
-        self.dt_dv = 1.0
+        self.dt = np.float64(0.0)
+        self.dt_dv = np.float64(0.1)
 
         self.V = list()
+        self.V.append(self.V_reset)
+
         self.spike_log = list()
         self.spike_bool = False
         self.trim_lim = trim_lim
@@ -80,45 +84,28 @@ class LIF:
 
     # Define a function to update the LIF neuron's state
     def update(self, current_input: np.float64 = np.float64(0)) -> None:
-        # If the voltage log is empty, assume it is at 0.0, then perform calculation
-        if len(self.V) < 1:
-            delta_V = (current_input - self.V_reset) / self.tau_m
-            self.V.append(self.V_reset + delta_V * self.dt / self.tau_m)
-        if self.spike_bool:
-            self.spike_bool = False
-            self.V.append(self.V_reset * 1.5)
-        # Handle refractory period
         if self.remaining_refractory_time > 0:
+            self.V.append(self.V_reset)
             self.remaining_refractory_time -= 1
-            delta_V = (current_input - self.V_reset) / self.tau_m
-            self.V.append(self.V_reset + delta_V * self.dt / self.tau_m)
             self.spike_bool = False
-        else:
-            # In refractory period
-            self.remaining_refractory_time = self.refractory_period
-            delta_V = (current_input - self.V[-1]) / self.tau_m
-            self.V.append(self.V[-1] + delta_V * self.dt / self.tau_m)
-            if self.V[-1] >= self.threshold:
-                self.V[-1] = self.threshold
-                
-                self.spike_log.append(self.threshold)
-                self.spike_counter += 1
-                self.spike_bool = True
-                # Enter refractory period
-                self.remaining_refractory_time = self.refractory_period
-            else:
-                self.spike_log.append(self.V[-1])
-                self.spike_bool = False
+        elif self.V[-1] >= self.threshold:
+            self.spike_log.append(self.threshold)
+            self.V[-1] = self.V_reset
+            self.remaining_refractory_time = self.refractory_dt / self.dt
+            self.spike_bool = True
+        dv = (-(self.V[-1] - self.leak_conductance) + current_input / self.leak_conductance) * (self.dt / self.tau_m)
+        new_v = self.V[-1] + dv
+        self.V.append(new_v)
 
         # Trim the spike log
         if len(self.spike_log) >= self.trim_lim:
             del self.spike_log[0]
-            if self.neuron_type == "default":
-                if self.spike_counter > self.trim_lim//2:
-                    try:
-                        self.inihbit()
-                    except:
-                        pass
+        #    if self.neuron_type == "default":
+        #        if self.spike_counter > self.trim_lim//2:
+        #            try:
+        #                self.inihbit()
+        #            except:
+        #                pass
         if self.verbose_log:
             self.full_spike_log.append(self.spike_bool)
         self.dt += self.dt_dv
@@ -141,7 +128,7 @@ class WeightMatrix:
         print(self.matrix.shape)
 
 global hebbian_lr
-hebbian_lr     = np.float64(0.01)
+hebbian_lr     = np.float64(0.0007)
 global weight_penalty
 weight_penalty = np.float64(0.50)
 
@@ -156,7 +143,7 @@ def adjust_weights_global(k1, k2, w, correlation_term):
     if isinstance(new_w, np.ndarray):
         print(new_w)
         raise
-    if new_w >= np.float64(0.90):
+    if new_w >= np.float64(0.980):
         new_w *= weight_penalty
 
     return (k1, k2, new_w)
@@ -398,6 +385,7 @@ class Network:
             return step_total
 
     def GlobalOpt(self):
+        print("\nOptimization")
         if self.network_verbose_logging:
             self.step_debug_log.append(f"\nGLOBAL HEBBIAN WEIGHT OPT [START]")
             hebb_start = process_time()
@@ -540,12 +528,12 @@ class Network:
     def SaveNeuronPotentials(self):
         buffer_dict = dict()
         for k in self.neuron_keys:
-            cache=self.LIFNeurons[k].V
+            cache = self.LIFNeurons[k].V
             cache = [str(i) for i in cache]
             cache = ", ".join(cache)
             
             buffer_dict[k] = cache
-            print(buffer_dict[k])
+            #print(buffer_dict[k])
             
         with open("./logs/potentials.json", "w") as outfile:
             json.dump(coords_dump, outfile)
@@ -642,7 +630,7 @@ if __name__ == "__main__":
             cache = snn.LIFNeurons[k].V
             cache = [str(i) for i in cache]
             cache = ", ".join(cache)
-            print(cache)
+            #print(cache)
             outputs[k] = cache
     
     print(outputs)
