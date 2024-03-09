@@ -3,7 +3,7 @@ import numpy as np
 from tqdm import tqdm
 import random
 import multiprocessing
-from multiprocessing import Array
+from multiprocessing import Array, freeze_support
 import pandas as pd
 from time import process_time
 import Conv2D
@@ -14,9 +14,12 @@ import pickle
 import numpy as np
 import mpmath
 import random
-from sklearn.preprocessing import minmax_scale
+from scipy import stats
 np.seterr(all='raise')
 rng = np.random.default_rng()
+
+
+
 class LIF:
     def __init__(self, neuron_id: str, lif_init: str = "default", trim_lim: int = 10, refractory_period: int = 1, verbose_log: bool = False) -> None:
         self.neuron_id = neuron_id
@@ -36,20 +39,21 @@ class LIF:
 
         # Define simulation parameters
         if lif_init == "default":
-            self.tau_m = np.float32(1.5)  # Membrane time constant
-            self.V_reset = np.float32(-75.0)  # Reset voltage
-            self.threshold = np.float32(-55.0)  # Spike threshold
+            self.tau_m = np.float64(1.5)  # Membrane time constant
+            self.V_reset = np.float64(-75.0)  # Reset voltage
+            self.threshold = np.float64(-55.0)  # Spike threshold
             self.refractory_period = refractory_period
         elif lif_init == "random":
-            self.tau_m = np.float32(rng.uniform(1.0, 2.000))  # Membrane time constant
-            self.V_reset = np.float32(rng.uniform(-80.0, -70.0))  # Reset voltage
-            self.threshold = np.float32(rng.uniform(-50.0, -40.0))  # Spike threshold
+            self.tau_m = np.float64(rng.uniform(0.50, 2.50))  # Membrane time constant
+            self.V_reset = np.float64(rng.uniform(-80.0, -70.0))  # Reset voltage
+            self.threshold = np.float64(rng.uniform(-50.0, -40.0))  # Spike threshold
             self.refractory_period = rng.integers(0, 1)
 
-        self.threshold_factor = np.float32(1.0)
+        self.threshold_factor = np.float64(1.0)
         self.remaining_refractory_time = 0
 
         self.dt = 0.0
+        self.dt_dv = 1.0
 
         self.V = list()
         self.spike_log = list()
@@ -66,16 +70,16 @@ class LIF:
         x = len([i for i in self.spike_log if i >= self.threshold])
         y = x / self.trim_lim
         if y >= 0.666:
-            self.threshold_factor = self.threshold_factor + np.float32(0.1)
+            self.threshold_factor = self.threshold_factor + np.float64(0.1)
             self.threshold *= self.threshold_factor
-        elif y < 0.666 and self.threshold_factor > np.float32(1.100):
-            self.threshold_factor = self.threshold_factor - np.float32(0.1)
+        elif y < 0.666 and self.threshold_factor > np.float64(1.100):
+            self.threshold_factor = self.threshold_factor - np.float64(0.1)
             self.threshold *= self.threshold_factor
         else:
             pass
 
     # Define a function to update the LIF neuron's state
-    def update(self, current_input: np.float32 = np.float32(0)) -> None:
+    def update(self, current_input: np.float64 = np.float64(0)) -> None:
         # If the voltage log is empty, assume it is at 0.0, then perform calculation
         if len(self.V) < 1:
             delta_V = (current_input - self.V_reset) / self.tau_m
@@ -103,26 +107,30 @@ class LIF:
                 # Enter refractory period
                 self.remaining_refractory_time = self.refractory_period
             else:
+                self.spike_log.append(self.V[-1])
                 self.spike_bool = False
 
         # Trim the spike log
         if len(self.spike_log) >= self.trim_lim:
             del self.spike_log[0]
             if self.neuron_type == "default":
-                if self.spike_counter >= self.trim_lim
-                self.inihbit()
+                if self.spike_counter > self.trim_lim//2:
+                    try:
+                        self.inihbit()
+                    except:
+                        pass
         if self.verbose_log:
             self.full_spike_log.append(self.spike_bool)
-        self.dt += 1.0
+        self.dt += self.dt_dv
 
 class WeightMatrix:
     def __init__(self, neuron_keys:list = [], w_init: str = "default") -> None:
         self.neuron_keys = neuron_keys
         self.n_neurons = len(neuron_keys)
         if w_init == "default":
-            self.matrix = np.zeros(shape=(self.n_neurons, self.n_neurons))+np.float32(0.5)
+            self.matrix = np.zeros(shape=(self.n_neurons, self.n_neurons))+np.float64(0.5)
         elif w_init == "random":
-            self.matrix = np.random.default_rng().uniform(np.float32(0.01), np.float32(0.99), (self.n_neurons, self.n_neurons))
+            self.matrix = np.random.default_rng().uniform(np.float64(0.01), np.float64(0.99), (self.n_neurons, self.n_neurons))
         else:
             e = "\n\n\tWeight init only takes 'zeros' or 'random'!\n\tDefault is zero.\n"
             raise Exception(e)
@@ -133,16 +141,22 @@ class WeightMatrix:
         print(self.matrix.shape)
 
 global hebbian_lr
-hebbian_lr     = np.float32(0.01)
+hebbian_lr     = np.float64(0.01)
 global weight_penalty
-weight_penalty = np.float32(0.50)
+weight_penalty = np.float64(0.50)
 
-def adjust_weights_local(k1, k2, w, correlation_term):
+
+def adjust_weights_global(k1, k2, w, correlation_term):
     # Adjusts the weight that are inside self.weight_matrix
     # Originally was a lambda func call, but more ops were needed
-    term: np.float32 = np.multiply(hebbian_lr, correlation_term)
-    new_w: np.float32 = w + term
-    if new_w >= np.float32(0.90):
+    term: np.float64 = np.multiply(hebbian_lr, correlation_term)
+    if isinstance(w, np.ndarray):
+        print(w)
+    new_w: np.float64 = w + term
+    if isinstance(new_w, np.ndarray):
+        print(new_w)
+        raise
+    if new_w >= np.float64(0.90):
         new_w *= weight_penalty
 
     return (k1, k2, new_w)
@@ -188,7 +202,7 @@ class Network:
         self.neuron_verbose_logging     = neuron_verbose_logging
         self.step_debug_log             = []
 
-    def InitNetwork(self, n_inputs: int = 16):
+    def InitNetwork(self, n_inputs: int = 64):
         print("Initializing Network Class...")
         self.n_inputs = n_inputs
         self.n_layers = 0
@@ -198,14 +212,14 @@ class Network:
         s = 2
         target_r = self.n_inputs
         layer_count = 0
-        while True:
-            r /= 2
-            if r == target_r:
-                break
-            self.n_layers+= 1
+        #while True:
+        #    r /= 2
+        #    if r == target_r:
+        #        break
+        #    self.n_layers+= 1
             #print(r)
-        self.n_layers = int(self.n_layers - 1 ) // 2
-
+        #self.n_layers = int(self.n_layers - 1 ) // 2
+        
         # Generating key : coordinate pairs for visualization
         coordinates = dict()
         coordinates_dump = dict()
@@ -234,7 +248,7 @@ class Network:
             coordinates_dump[str(i)] = f
 
         if self.image_output:
-            self.n_outputs = self.n_inputs * 4
+            self.n_outputs = self.n_inputs
             output_coords = generate_grids(-200, self.n_outputs, scale=1000)
             print("Generating Output Nodes...\n")
             for i in tqdm(range(self.n_outputs)):
@@ -260,24 +274,22 @@ class Network:
         print("\nNetwork INIT COMPLETE!\n")
         return coordinates, coordinates_dump
 
-    def get_correlation_term(self, k1: str, k2: str):
+    def get_correlation_term(self, k1: str, k2: str) -> tuple:
         # Calculates the activity correlation between both
         # neurons.
         # Correlatiion term is the bias
         n1 = self.LIFNeurons[self.key_map[k1]].spike_log
         n2 = self.LIFNeurons[self.key_map[k2]].spike_log
-        #n1 = minmax_scale(n1, feature_range=(0, 1))
-        #n2 = minmax_scale(n2, feature_range=(0, 1))
         if len(n1) == len(n2) and len(n1) >= 3:
             try:
-                correlation = np.corrcoef(n1, n2)
+                correlation, p_val = stats.pearsonr(n1, n2)
             except:
                 correlation = 0.0
         else:
             correlation = 0.0
         return (k1, k2, correlation)
 
-    def BacklogHandler(self, fired_list:list):
+    def BacklogHandler(self, fired_list:list) -> dict:
         # The backlog handler
         # Called as a data formatter + handler
         # Handler stores to a backlog/todo list
@@ -294,12 +306,12 @@ class Network:
 
         return cache_dict
 
-    def step(self, step_number = 0, input_current = np.float32(0.0000), input_neurons:tuple = (), fired_input_keys = []):
+    def step(self, step_number = 0, input_current = np.float64(0.0000), input_neurons:tuple = (), fired_input_keys = []):
         if self.network_verbose_logging:
             step_start = process_time()
             self.step_debug_log.append(f"\nStep {step_number} [START]")
 
-        if input_current != np.float32(0.0000):
+        if input_current.any() != np.float64(0.0000):
             if self.network_verbose_logging:
                 self.step_debug_log.append("\n\tInput Current Detected!")
             input_current = input_current / np.pi
@@ -313,7 +325,6 @@ class Network:
         if self.image_input:
             signal_keys = [int(s_k) for s_k in signal_keys if "Input " not in self.key_map[s_k]]
             filtered_keys = [int(n_k) for n_k in list(self.key_map.keys()) if "Input " not in self.key_map[n_k]]
-        #print(filtered_keys)
         self.step_debug_log.append(f"\n\tAll Neuron Keys:\n\t\t{self.neuron_keys}")
         if len(signal_keys) > 0:
             if self.network_verbose_logging:
@@ -325,7 +336,6 @@ class Network:
             for receiver_neuron in signal_keys:
                 r_k = int(receiver_neuron)
                 recieved_signal = self.backlog[r_k]
-                #print(recieved_signal)
                 neu = self.LIFNeurons[self.key_map[r_k]]
                 if r_k in input_neurons:
                     neu.update(input_current+recieved_signal)
@@ -334,7 +344,7 @@ class Network:
                 else:
                     if self.network_verbose_logging:
                         self.step_debug_log.append(f"\n\t\tUpdate: neuron {r_k}")
-                    neu.update(np.float32(recieved_signal))
+                    neu.update(np.float64(recieved_signal))
                 if neu.spike_bool:
                     fired_neuron_keys.append(r_k)
                 if self.network_verbose_logging:
@@ -348,7 +358,6 @@ class Network:
         if self.network_verbose_logging:
             self.step_debug_log.append(f"\n\tNormal Step [START]")
             normal_start = process_time()
-        #print(filtered_keys)
         for k in filtered_keys:
             if self.network_verbose_logging:
                 self.step_debug_log.append(f"")
@@ -360,8 +369,7 @@ class Network:
             else:
                 if self.network_verbose_logging:
                     self.step_debug_log.append(f"\n\t\tUpdate: neuron {k}")
-                neu.update(np.float32(-55.0))
-            #print(k)
+                neu.update(np.float64(-55.0))
 
             if neu.spike_bool:
                 fired_neuron_keys.append(k)
@@ -394,27 +402,28 @@ class Network:
             self.step_debug_log.append(f"\nGLOBAL HEBBIAN WEIGHT OPT [START]")
             hebb_start = process_time()
         update_args = []
-        # Prepare data that can be passed to multiprocessing
-        with multiprocessing.Pool(processes=6) as pool:
-            # Example of using shared_weight_matrix in multiprocessing
-            cache_result = pool.starmap_async(self.get_correlation_term, global_weight_pairs, chunksize=32)
-            result_args = cache_result.get()
-            for a in tqdm(result_args):
-                k1, k2, c_term = a
-                if k1 == k2:
-                    print(k1, k2)
-                w = self.weight_matrix[k1, k2]
-                update_args.append((k1, k2, w, c_term))
-
-        with multiprocessing.Pool(processes=6) as pool:
-            async_results = pool.starmap_async(adjust_weights_local, update_args)
-            update_results = async_results.get()
-
+        result_args = []
+        async_cache = correlation_pool.starmap_async(self.get_correlation_term, global_weight_pairs, chunksize=32)
+        result_args = async_cache.get()
+        
+        for a in tqdm(result_args):
+            k1, k2, c_term = a
+            if k1 == k2:
+                raise Exception("Tried optimizing itself!")
+            w = self.weight_matrix[k1, k2]
+            update_args.append((k1, k2, w, c_term))
+        
+        
+        async_results = optmization_pool.starmap_async(adjust_weights_global, update_args)
+        update_results = async_results.get()
+        
         # Convert letters to array indices
         row_indices = np.array([row for row, _, _ in update_results])
         col_indices = np.array([col for _, col, _ in update_results])
+
         # Extract values from tuple_list
-        values = np.array([value for _, _, value in update_results], dtype=np.float32)
+        values = np.array([value for _, _, value in update_results], dtype=np.float64)
+
         # Update the array in a vectorized manner
         self.weight_matrix[row_indices, col_indices] = values
 
@@ -424,6 +433,9 @@ class Network:
             self.step_debug_log.append(f"\nWeight Normalization [START]")
             norm_start = process_time()
 
+        if self.network_verbose_logging:
+            self.step_debug_log.append(f"\n\t\tTOOK {hebb_end - hebb_start}")
+            hebb_time = hebb_end - hebb_start
         # Normalize the weights to prevent uncontrolled growth
         snn.weight_matrix = (snn.weight_matrix-np.min(snn.weight_matrix))/(np.max(snn.weight_matrix)-np.min(snn.weight_matrix))
         if self.network_verbose_logging:
@@ -431,21 +443,18 @@ class Network:
             if self.network_verbose_logging:
                 self.step_debug_log.append(f"\nWeight Normalization [ENDED]")
                 self.step_debug_log.append(f"\n\tTOOK {norm_end - norm_start}")
+            return hebb_time
 
         # Copy weight matrix to a logger
         self.weight_log.append(np.copy(self.weight_matrix))
-
-        if self.network_verbose_logging:
-            self.step_debug_log.append(f"\n\t\tTOOK {hebb_end - hebb_start}")
-            hebb_time = hebb_end - hebb_start
-            return hebb_time
 
     def step_vision(self, current_vector: list):
         if self.network_verbose_logging:
             self.step_debug_log.append(f"\nVision Step [START]")
             vis_step_start = process_time()
         fired_cache = []
-        for i in list(self.key_map.keys()):
+        print("Input")
+        for i in tqdm(list(self.key_map.keys())):
             str_id = self.key_map[i]
             if "Input " in str_id:
                 neu = self.LIFNeurons[str_id]
@@ -453,10 +462,10 @@ class Network:
                 neu.update(pixel)
                 if neu.spike_bool:
                     fired_cache.append(i)
-            if self.network_verbose_logging:
-                self.step_debug_log.append(f"\nVision Step [END]")
-                vis_step_end = process_time()
-                self.step_debug_log.append(f"\n\tTOOK: {vis_step_end - vis_step_start}")
+        if self.network_verbose_logging:
+            self.step_debug_log.append(f"\nVision Step [END]")
+            vis_step_end = process_time()
+            self.step_debug_log.append(f"\n\tTOOK: {vis_step_end - vis_step_start}")
         return fired_cache
 
     def RunVision(self, ticks):
@@ -467,6 +476,7 @@ class Network:
         # Load imgs
         paths = ["./SAMPLES/sample.png"]
         images = []
+        """
         for p in paths:
             img = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
             img = cv2.resize(img, (128, 128), interpolation=cv2.INTER_LINEAR)
@@ -480,32 +490,35 @@ class Network:
                     output_cache = layers[k].Call(img)
                 else:
                     output_cache = layers[k].Call(output_cache)
-
             img = layers[str(self.n_layers-1)].Get(True)
+        """
+        for p in paths:
+            img = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
+            img = cv2.resize(img, (6, 6), interpolation=cv2.INTER_LINEAR)
             img = utils.to_vector(utils.to_current(img))
             images.append(img)
         counter = 0
         time_log = []
         input_vector = images[0]
         for i in range(ticks):
-            """if i == 0:
+            if i == 0:
                 if counter >=  len(images):
                     counter = 0
                 input_vector = images[counter]
             else:
-                input_vector = np.zeros(shape=images[0].shape)"""
+                input_vector = np.zeros(shape=images[0].shape)
             print(f"\nStep {i}")
-            input_data = np.float32(-55.0)
+            #input_data = np.float64(-55.0)
             fired = self.step_vision(input_vector)
             if self.network_verbose_logging:
-                step_time = self.step(i, input_current = input_data, fired_input_keys=fired)
+                step_time = self.step(i, input_current = input_vector, fired_input_keys=fired)
                 hebb_time = self.GlobalOpt()
                 step_total = step_time + hebb_time
                 time_log.append(step_total)
                 self.step_debug_log.append(f"\nTook: {step_total} seconds")
                 print(f"Took: {step_total} seconds\n")
             else:
-                self.step(i, input_current = input_data, fired_input_keys=fired)
+                self.step(i, input_current = input_vector, fired_input_keys=fired)
                 hebb_time = self.GlobalOpt()
             counter+= 1
         if self.network_verbose_logging:
@@ -556,6 +569,15 @@ def EuclidianDistance(arg):
     return dist, k1, k2
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
+    global correlation_pool
+    correlation_pool = multiprocessing.Pool(6)
+    global optmization_pool
+    optmization_pool = multiprocessing.Pool(6)
+    global step_lock
+    step_lock = 0
+
+
     global key_pairs
     key_pairs = []
     global global_weight_pairs
@@ -571,7 +593,7 @@ if __name__ == "__main__":
         network_verbose_logging = True,
         neuron_verbose_logging = True)
 
-    coords_dict, coords_dump = snn.InitNetwork(n_inputs=16)
+    coords_dict, coords_dump = snn.InitNetwork(n_inputs=36)
     # Dump ID : Coord pair to json
     with open("./logs/coordinates.json", "w") as outfile:
         json.dump(coords_dump, outfile)
@@ -613,7 +635,7 @@ if __name__ == "__main__":
     snn.weight_matrix = (snn.weight_matrix-np.min(snn.weight_matrix))/(np.max(snn.weight_matrix)-np.min(snn.weight_matrix))
     snn.weight_log.append(snn.weight_matrix)
     
-    snn.RunVision(100)
+    snn.RunVision(32)
     outputs = dict()
     for k in snn.neuron_keys:
         if "Output " in k:
