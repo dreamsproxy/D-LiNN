@@ -347,9 +347,9 @@ class Network:
                     neu.update(np.float64(recieved_signal))
                 if neu.spike_bool:
                     fired_neuron_keys.append(r_k)
+                filtered_keys.remove(r_k)
                 if self.network_verbose_logging:
                     self.step_debug_log.append(f"\n\t\t\tRemoved: {r_k} from {filtered_keys}")
-                filtered_keys.remove(r_k)
             if self.network_verbose_logging:
                 backlog_end = process_time()
                 self.step_debug_log.append(f"\n\tBacklog [ENDED]")
@@ -635,7 +635,7 @@ if __name__ == "__main__":
     snn.weight_matrix = (snn.weight_matrix-np.min(snn.weight_matrix))/(np.max(snn.weight_matrix)-np.min(snn.weight_matrix))
     snn.weight_log.append(snn.weight_matrix)
     
-    snn.RunVision(32)
+    snn.RunVision(16)
     outputs = dict()
     for k in snn.neuron_keys:
         if "Output " in k:
