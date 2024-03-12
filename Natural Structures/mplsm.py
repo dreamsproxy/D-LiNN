@@ -18,8 +18,6 @@ from scipy import stats
 np.seterr(all='raise')
 rng = np.random.default_rng()
 
-
-
 class LIF:
     def __init__(self, neuron_id: str, lif_init: str = "default", trim_lim: int = 10, refractory_period: int = 1, verbose_log: bool = False) -> None:
         self.neuron_id = neuron_id
@@ -42,18 +40,20 @@ class LIF:
             self.tau_m = np.float64(1.5)  # Membrane time constant
             self.V_reset = np.float64(-75.0)  # Reset voltage
             self.threshold = np.float64(-55.0)  # Spike threshold
+            self.leak_conductance = np.float64(10.0)
+            self.leak_reverse = np.float64(-75.0)
         elif lif_init == "random":
             self.tau_m = np.float64(rng.uniform(5.0, 15.0))  # Membrane time constant
             self.V_reset = np.float64(rng.uniform(-76.0, -74.0))  # Reset voltage
             self.threshold = np.float64(rng.uniform(-56.0, -54.0))  # Spike threshold
-            #self.refractory_period = rng.integers(0, 1)
-        self.leak_conductance = np.float64(10.0)
-        self.leak_reverse = np.float64(-75.0)
+            self.leak_conductance = np.float64(rng.uniform(9.0, 11.0))
+            self.leak_reverse = np.float64(rng.uniform(-76.0, -74.0))
+
+        self.refractory_dt = np.float64(2.0)
         self.refractory_period = refractory_period
         self.threshold_factor = np.float64(1.0)
-        self.remaining_refractory_time = 0
-        self.refractory_dt = np.float64(2.0)
 
+        self.remaining_refractory_time = 0
         self.dt = np.float64(0.0)
         self.dt_dv = np.float64(0.1)
 
@@ -85,7 +85,7 @@ class LIF:
     # Define a function to update the LIF neuron's state
     def update(self, current_input: np.float64 = np.float64(0)) -> None:
         if self.remaining_refractory_time > 0:
-            self.V.append(self.V_reset)
+            self.V[-1] = self.V_reset
             self.remaining_refractory_time -= 1
             self.spike_bool = False
         elif self.V[-1] >= self.threshold:
@@ -100,12 +100,6 @@ class LIF:
         # Trim the spike log
         if len(self.spike_log) >= self.trim_lim:
             del self.spike_log[0]
-        #    if self.neuron_type == "default":
-        #        if self.spike_counter > self.trim_lim//2:
-        #            try:
-        #                self.inihbit()
-        #            except:
-        #                pass
         if self.verbose_log:
             self.full_spike_log.append(self.spike_bool)
         self.dt += self.dt_dv
@@ -211,6 +205,7 @@ class Network:
         coordinates = dict()
         coordinates_dump = dict()
         input_coords: np.ndarray = generate_grids(2000, self.n_inputs, scale=1000)
+        print(self.n_inputs)
 
         self.input_keys = list()
         print("Generating Input Nodes...\n")
@@ -235,14 +230,17 @@ class Network:
             coordinates_dump[str(i)] = f
 
         if self.image_output:
-            self.n_outputs = self.n_inputs
+            self.n_outputs = self.n_inputs * 2
+            print(self.n_outputs)
             output_coords = generate_grids(-200, self.n_outputs, scale=1000)
+            print(output_coords.shape)
+            raise
             print("Generating Output Nodes...\n")
             for i in tqdm(range(self.n_outputs)):
                 self.LIFNeurons[f"Output {i}"] = LIF(
                     i, trim_lim=self.hist_lim, lif_init = self.lif_init,
                     verbose_log=self.neuron_verbose_logging)
-                
+                print(i)
                 f = str(tuple(output_coords[i, :])).replace("(", "").replace(")", "")
                 coordinates[f"Output {i}"] = output_coords[i, :]
                 coordinates_dump[f"Output {i}"] = f
@@ -581,7 +579,7 @@ if __name__ == "__main__":
         network_verbose_logging = True,
         neuron_verbose_logging = True)
 
-    coords_dict, coords_dump = snn.InitNetwork(n_inputs=36)
+    coords_dict, coords_dump = snn.InitNetwork(n_inputs=64)
     # Dump ID : Coord pair to json
     with open("./logs/coordinates.json", "w") as outfile:
         json.dump(coords_dump, outfile)
