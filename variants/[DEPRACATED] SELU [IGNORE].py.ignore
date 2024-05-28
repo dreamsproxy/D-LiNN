@@ -1,0 +1,157 @@
+import numpy as np
+from activations import SeLU
+import os
+import plotly.graph_objects as go
+from matplotlib import pyplot as plt
+from scipy import stats
+from random import random
+from tqdm import tqdm
+from time import process_time
+import multiprocessing
+from w_init import glorot
+global weight_decay
+weight_decay = 0.95
+
+class Node:
+    def __init__(self) -> None:
+        self.activity_log = list()
+        self.activity_mean = np.float32(0.0)
+        self.decay = np.float32(float(1.0 - (random() * 0.1)))
+        self.activity_regulation = 0.95
+
+    def update(self, y: np.float32):
+        self.activity_log.append(y)
+        if len(self.activity_log) > 1:
+            self.activity_mean: np.float32 = np.mean(self.activity_log, dtype=np.float32)
+            # Normalize activity log
+            self.activity_log: np.ndarray = (self.activity_log-np.min(self.activity_log))/(np.max(self.activity_log)-np.min(self.activity_log))
+            self.activity_log: list = self.activity_log.astype(np.float32).tolist()
+
+class Network:
+    """
+        How data I/O?
+        Imagine a stack of floats:
+            0.1
+            0.331
+            0.148
+            0.987
+        this is how data is input and output
+        if there is a difference in input length, use kandallTau?
+    """
+    def __init__(self, n_inputs: int, n_hidden: int, n_outputs: int) -> None:
+        # Populate critical vars
+        self.n_inputs: int = n_inputs
+        self.n_hidden: int = n_hidden
+        self.n_outputs: int = n_outputs
+
+        self.total_nodes: int = self.n_inputs + self.n_hidden + self.n_outputs
+
+        self.weight_matrix: np.ndarray = glorot((self.total_nodes, self.total_nodes))
+        self.weight_pairs: list = []
+
+        for k1 in range(0, self.total_nodes):
+            for k2 in range(0, self.total_nodes):
+                if k2 != k1 and k1 != k2:
+                    k1_str = str(k1)
+                    k2_str = str(k2)
+                    self.weight_pairs.append((k1_str, k2_str, self.weight_matrix[k1][k2]))
+
+        """
+        n_inputs = first n neurons (SORTED)
+        n_outputs = last n neurons (SORTED)
+        """
+        # Need to eliminate input and output connections:
+        self.weight_matrix[:self.n_inputs, :self.n_inputs] = np.nan
+        self.weight_matrix[-self.n_outputs:, -self.n_outputs:] = np.nan
+        # Elinimate recurrent
+        node_list = [i for i in range(self.total_nodes)]
+        for k in node_list:
+            self.weight_matrix[k][k] = np.nan
+
+        # MAKE IT TIME CONSTANT
+        self.tick = 0
+        self.dt = 1
+        self.backlog = []
+
+        # Init nodes:
+        self.nodes = dict()
+
+        self.coef_mat = np.zeros((self.total_nodes, self.total_nodes), dtype=np.float32)
+        progbar = tqdm(total=self.total_nodes * self.total_nodes)
+        for k1 in range(self.total_nodes):
+            self.nodes[k1] = Node()
+            for k2 in range(self.total_nodes):
+                self.coef_mat[k1][k2] = np.float32(random())
+                progbar.update(1)
+        progbar.close()
+
+    def step(self, d_slice) -> None:
+        print("Node Proc!")
+        start = process_time()
+        for k in list(self.nodes.keys()):
+            decay: np.float32 = self.nodes[k].decay
+            mean_out: np.float32 = SeLU.activate(d_slice, decay_rate=decay)
+            self.nodes[k].update(mean_out)
+        end = process_time()
+        print(f"Took {end-start} ms!")
+        print(f"Each node took: {float(end-start) / float(self.total_nodes * self.total_nodes)}")
+        print()
+
+    def update_weights(self):
+        print("Weight Update!")
+        start = process_time()
+        for k1 in range(self.total_nodes):
+            x = self.nodes[k1].activity_log
+            # x row log:
+            weight_pair_log = []
+            for k2 in range(self.total_nodes):
+                y = self.nodes[k2].activity_log
+                weight_pair_log.append(y)
+            self.weight_matrix[k1] += np.multiply(stats.pearsonr(x, y).correlation, weight_decay)
+        # Normalize weight mat to prevent uncontrolled growth
+        self.weight_matrix = (self.weight_matrix-np.min(self.weight_matrix))/(np.max(self.weight_matrix)-np.min(self.weight_matrix))
+
+        end = process_time()
+        print(f"Took {end-start} ms!")
+        print(f"Each weight update took: {float(end-start) / float(self.total_nodes * self.total_nodes)}")
+        print()
+
+    def run(self, data):
+        for i in range(data.shape[0]):
+            d_slice = data[self.tick]
+            self.step(d_slice)
+            self.tick += self.dt
+            if self.tick % 4 == 0:
+                self.update_weights()
+                #print("Update!")
+
+def plot_heatmap(matrix, x_labels=None, y_labels=None, title=None, colorscale='Viridis'):#
+    """
+    Plot a numpy 2D matrix as a heatmap using Plotly.
+    
+    Parameters:
+        - matrix (numpy.ndarray): 2D matrix to plot as a heatmap.
+        - x_labels (list): Labels for the x-axis.
+        - y_labels (list): Labels for the y-axis.
+        - title (str): Title for the heatmap.
+        - colorscale (str): The color scale to be used in the heatmap.
+        
+    Returns:
+        - None
+    """
+    fig = go.Figure(data=go.Heatmap(z=matrix, x=x_labels, y=y_labels, colorscale=colorscale))
+    
+    if title:
+        fig.update_layout(title=title)
+    fig.update_layout(yaxis=dict(scaleanchor="x", scaleratio=1), xaxis=dict(scaleanchor="y", scaleratio=1), height=1000, width=1000)
+
+    fig.show()
+
+if __name__ == "__main__":
+    net = Network(3, 64, 3)
+    print(net.weight_matrix)
+    #plot_heatmap(net.weight_matrix)
+    plt.imshow(net.weight_matrix)
+    plt.show()
+    net.run(data=np.sin(np.linspace(0, 16*np.pi, 128)))
+    #net.step(data=)
