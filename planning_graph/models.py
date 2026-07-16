@@ -8,11 +8,14 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+import re
 from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
 
 DOCUMENT_VERSION = 1
+DEFAULT_GROUP_COLOR = "#3b5b78"
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 NODE_KINDS = (
     "Idea",
@@ -51,6 +54,15 @@ def _nonempty(value: str, field_name: str) -> str:
     if not normalized:
         raise ValueError(f"{field_name} must not be empty")
     return normalized
+
+
+def normalize_hex_color(value: str) -> str:
+    """Validate and normalize an RGB color encoded as ``#RRGGBB``."""
+
+    normalized = str(value).strip()
+    if not _HEX_COLOR.fullmatch(normalized):
+        raise ValueError("color must use #RRGGBB format")
+    return normalized.upper()
 
 
 def _utc_now() -> str:
@@ -178,12 +190,94 @@ class PlanningEdge:
 
 
 @dataclass
+class PlanningGroup:
+    """Persistent membership plus an optional visual backdrop."""
+
+    group_id: str
+    title: str
+    node_ids: list[str]
+    backdrop: bool = True
+    color: str = DEFAULT_GROUP_COLOR
+    x: float = 0.0
+    y: float = 0.0
+    width: float = 400.0
+    height: float = 250.0
+    layer: int = 0
+
+    def __post_init__(self) -> None:
+        self.group_id = _nonempty(self.group_id, "group_id")
+        self.title = _nonempty(self.title, "group title")
+        self.node_ids = [str(node_id).strip() for node_id in self.node_ids]
+        if len(self.node_ids) < 2:
+            raise ValueError("a group must contain at least two nodes")
+        if any(not node_id for node_id in self.node_ids):
+            raise ValueError("group node IDs must not be empty")
+        if len(set(self.node_ids)) != len(self.node_ids):
+            raise ValueError("group node IDs must be unique")
+        self.backdrop = bool(self.backdrop)
+        self.color = normalize_hex_color(self.color)
+        self.x = float(self.x)
+        self.y = float(self.y)
+        self.width = float(self.width)
+        self.height = float(self.height)
+        if self.width <= 0.0 or self.height <= 0.0:
+            raise ValueError("group width and height must be positive")
+        self.layer = int(self.layer)
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        title: str,
+        node_ids: Iterable[str],
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+        backdrop: bool = True,
+        color: str = DEFAULT_GROUP_COLOR,
+        layer: int = 0,
+    ) -> "PlanningGroup":
+        return cls(
+            group_id=str(uuid4()),
+            title=title,
+            node_ids=list(node_ids),
+            backdrop=backdrop,
+            color=color,
+            x=x,
+            y=y,
+            width=width,
+            height=height,
+            layer=layer,
+        )
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PlanningGroup":
+        return cls(
+            group_id=str(payload["group_id"]),
+            title=str(payload.get("title", "Group")),
+            node_ids=[str(node_id) for node_id in payload.get("node_ids", [])],
+            backdrop=bool(payload.get("backdrop", True)),
+            color=str(payload.get("color", DEFAULT_GROUP_COLOR)),
+            x=float(payload.get("x", 0.0)),
+            y=float(payload.get("y", 0.0)),
+            width=float(payload.get("width", 400.0)),
+            height=float(payload.get("height", 250.0)),
+            layer=int(payload.get("layer", 0)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class PlanningDocument:
     """A complete planning graph document."""
 
     title: str = "Untitled Planning Graph"
     nodes: dict[str, PlanningNode] = field(default_factory=dict)
     edges: dict[str, PlanningEdge] = field(default_factory=dict)
+    groups: dict[str, PlanningGroup] = field(default_factory=dict)
     version: int = DOCUMENT_VERSION
     created_at: str = field(default_factory=_utc_now)
     updated_at: str = field(default_factory=_utc_now)
@@ -203,15 +297,36 @@ class PlanningDocument:
             raise ValueError("node dictionary keys must match node_id values")
         if any(edge_id != edge.edge_id for edge_id, edge in self.edges.items()):
             raise ValueError("edge dictionary keys must match edge_id values")
+        if any(group_id != group.group_id for group_id, group in self.groups.items()):
+            raise ValueError("group dictionary keys must match group_id values")
 
         known = set(self.nodes)
-        dangling = [
+        dangling_edges = [
             edge.edge_id
             for edge in self.edges.values()
             if edge.source_id not in known or edge.target_id not in known
         ]
-        if dangling:
-            raise ValueError(f"edges reference missing nodes: {dangling}")
+        if dangling_edges:
+            raise ValueError(f"edges reference missing nodes: {dangling_edges}")
+
+        dangling_groups = [
+            group.group_id
+            for group in self.groups.values()
+            if any(node_id not in known for node_id in group.node_ids)
+        ]
+        if dangling_groups:
+            raise ValueError(f"groups reference missing nodes: {dangling_groups}")
+
+        memberships: dict[str, str] = {}
+        for group in self.groups.values():
+            for node_id in group.node_ids:
+                previous = memberships.get(node_id)
+                if previous is not None:
+                    raise ValueError(
+                        f"node {node_id!r} belongs to multiple groups: "
+                        f"{previous!r} and {group.group_id!r}"
+                    )
+                memberships[node_id] = group.group_id
 
     def add_node(self, node: PlanningNode) -> None:
         if node.node_id in self.nodes:
@@ -227,8 +342,30 @@ class PlanningDocument:
         self.edges[edge.edge_id] = edge
         self.touch()
 
+    def add_group(self, group: PlanningGroup) -> None:
+        if group.group_id in self.groups:
+            raise ValueError(f"duplicate group id: {group.group_id}")
+        known = set(self.nodes)
+        missing = [node_id for node_id in group.node_ids if node_id not in known]
+        if missing:
+            raise ValueError(f"group references missing nodes: {missing}")
+        occupied = {
+            node_id
+            for existing in self.groups.values()
+            for node_id in existing.node_ids
+        }
+        overlap = sorted(occupied.intersection(group.node_ids))
+        if overlap:
+            raise ValueError(f"nodes already belong to another group: {overlap}")
+        self.groups[group.group_id] = group
+        self.touch()
+
     def remove_edge(self, edge_id: str) -> None:
         self.edges.pop(edge_id, None)
+        self.touch()
+
+    def remove_group(self, group_id: str) -> None:
+        self.groups.pop(group_id, None)
         self.touch()
 
     def remove_node(self, node_id: str) -> list[str]:
@@ -242,8 +379,24 @@ class PlanningDocument:
         ]
         for edge_id in removed_edges:
             del self.edges[edge_id]
+
+        groups_to_remove: list[str] = []
+        for group in self.groups.values():
+            if node_id in group.node_ids:
+                group.node_ids.remove(node_id)
+                if len(group.node_ids) < 2:
+                    groups_to_remove.append(group.group_id)
+        for group_id in groups_to_remove:
+            del self.groups[group_id]
+
         self.touch()
         return removed_edges
+
+    def group_for_node(self, node_id: str) -> PlanningGroup | None:
+        for group in self.groups.values():
+            if node_id in group.node_ids:
+                return group
+        return None
 
     def touch(self) -> None:
         self.updated_at = _utc_now()
@@ -257,20 +410,24 @@ class PlanningDocument:
             "updated_at": self.updated_at,
             "nodes": [node.to_dict() for node in self.nodes.values()],
             "edges": [edge.to_dict() for edge in self.edges.values()],
+            "groups": [group.to_dict() for group in self.groups.values()],
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PlanningDocument":
         node_list = [PlanningNode.from_dict(item) for item in payload.get("nodes", [])]
         edge_list = [PlanningEdge.from_dict(item) for item in payload.get("edges", [])]
+        group_list = [PlanningGroup.from_dict(item) for item in payload.get("groups", [])]
 
         nodes = _unique_map(node_list, key=lambda node: node.node_id, label="node")
         edges = _unique_map(edge_list, key=lambda edge: edge.edge_id, label="edge")
+        groups = _unique_map(group_list, key=lambda group: group.group_id, label="group")
 
         return cls(
             title=str(payload.get("title", "Untitled Planning Graph")),
             nodes=nodes,
             edges=edges,
+            groups=groups,
             version=int(payload.get("version", DOCUMENT_VERSION)),
             created_at=str(payload.get("created_at", _utc_now())),
             updated_at=str(payload.get("updated_at", _utc_now())),
