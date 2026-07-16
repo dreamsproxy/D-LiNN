@@ -1,7 +1,7 @@
 """Serializable data model for the LiSNN planning graph.
 
-The model is intentionally independent from Qt so it can be unit tested,
-versioned, and reused by future non-GUI planning and LiSNN visualization tools.
+The model stays independent from Qt so JSON, SQLite, tests, and future LiSNN
+visualizers all operate on the same graph document.
 """
 
 from __future__ import annotations
@@ -12,9 +12,18 @@ import re
 from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
+from .grid import (
+    NODE_HEIGHT,
+    NODE_MIN_HEIGHT,
+    NODE_MIN_WIDTH,
+    NODE_WIDTH,
+    snap_dimension,
+    snap_value,
+)
+
 
 DOCUMENT_VERSION = 1
-DEFAULT_GROUP_COLOR = "#3b5b78"
+DEFAULT_GROUP_COLOR = "#3B5B78"
 _HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 NODE_KINDS = (
@@ -30,6 +39,7 @@ NODE_KINDS = (
 )
 
 NODE_STATUSES = (
+    "None",
     "Backlog",
     "Active",
     "Blocked",
@@ -57,12 +67,17 @@ def _nonempty(value: str, field_name: str) -> str:
 
 
 def normalize_hex_color(value: str) -> str:
-    """Validate and normalize an RGB color encoded as ``#RRGGBB``."""
-
-    normalized = str(value).strip()
+    normalized = str(value).strip().upper()
     if not _HEX_COLOR.fullmatch(normalized):
         raise ValueError("color must use #RRGGBB format")
-    return normalized.upper()
+    return normalized
+
+
+def _font_size(value: int | float, field_name: str) -> int:
+    result = int(value)
+    if not 6 <= result <= 72:
+        raise ValueError(f"{field_name} must be within [6, 72]")
+    return result
 
 
 def _utc_now() -> str:
@@ -71,31 +86,41 @@ def _utc_now() -> str:
 
 @dataclass
 class PlanningNode:
-    """One semantic object in a planning graph."""
+    """One semantic block in a planning graph."""
 
     node_id: str
     kind: str
     title: str
     body: str = ""
-    status: str = "Backlog"
+    status: str = "None"
     priority: int = 0
     tags: list[str] = field(default_factory=list)
     x: float = 0.0
     y: float = 0.0
+    width: float = NODE_WIDTH
+    height: float = NODE_HEIGHT
+    header_font_size: int = 8
+    title_font_size: int = 10
+    body_font_size: int = 8
+    footer_font_size: int = 8
 
     def __post_init__(self) -> None:
         self.node_id = _nonempty(self.node_id, "node_id")
+        self.kind = _nonempty(self.kind, "kind")
         self.title = _nonempty(self.title, "title")
-        if self.kind not in NODE_KINDS:
-            raise ValueError(f"unknown node kind: {self.kind!r}")
-        if self.status not in NODE_STATUSES:
-            raise ValueError(f"unknown node status: {self.status!r}")
+        self.status = _nonempty(self.status, "status")
         self.priority = int(self.priority)
         if not 0 <= self.priority <= 5:
             raise ValueError("priority must be within [0, 5]")
-        self.tags = [tag.strip() for tag in self.tags if tag.strip()]
-        self.x = float(self.x)
-        self.y = float(self.y)
+        self.tags = [str(tag).strip() for tag in self.tags if str(tag).strip()]
+        self.x = snap_value(float(self.x))
+        self.y = snap_value(float(self.y))
+        self.width = snap_dimension(float(self.width), NODE_MIN_WIDTH)
+        self.height = snap_dimension(float(self.height), NODE_MIN_HEIGHT)
+        self.header_font_size = _font_size(self.header_font_size, "header_font_size")
+        self.title_font_size = _font_size(self.title_font_size, "title_font_size")
+        self.body_font_size = _font_size(self.body_font_size, "body_font_size")
+        self.footer_font_size = _font_size(self.footer_font_size, "footer_font_size")
 
     @classmethod
     def create(
@@ -120,14 +145,20 @@ class PlanningNode:
     def from_dict(cls, payload: Mapping[str, Any]) -> "PlanningNode":
         return cls(
             node_id=str(payload["node_id"]),
-            kind=str(payload["kind"]),
-            title=str(payload["title"]),
+            kind=str(payload.get("kind", "Note")),
+            title=str(payload.get("title", "Untitled")),
             body=str(payload.get("body", "")),
-            status=str(payload.get("status", "Backlog")),
+            status=str(payload.get("status", "None")),
             priority=int(payload.get("priority", 0)),
             tags=[str(tag) for tag in payload.get("tags", [])],
             x=float(payload.get("x", 0.0)),
             y=float(payload.get("y", 0.0)),
+            width=float(payload.get("width", NODE_WIDTH)),
+            height=float(payload.get("height", NODE_HEIGHT)),
+            header_font_size=int(payload.get("header_font_size", 8)),
+            title_font_size=int(payload.get("title_font_size", 10)),
+            body_font_size=int(payload.get("body_font_size", 8)),
+            footer_font_size=int(payload.get("footer_font_size", 8)),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -136,24 +167,39 @@ class PlanningNode:
 
 @dataclass
 class PlanningEdge:
-    """One directed, typed relationship between planning nodes."""
+    """One directed, typed relationship between planning blocks."""
 
     edge_id: str
     source_id: str
     target_id: str
-    relation: str = "Related"
+    relation: str = "Leads To"
     label: str = ""
     weight: float = 1.0
+    route_x: float | None = None
+    route_y: float | None = None
 
     def __post_init__(self) -> None:
         self.edge_id = _nonempty(self.edge_id, "edge_id")
         self.source_id = _nonempty(self.source_id, "source_id")
         self.target_id = _nonempty(self.target_id, "target_id")
         if self.source_id == self.target_id:
-            raise ValueError("self-edges are not supported in U1 v0.1")
+            raise ValueError("self-edges are not supported")
         if self.relation not in EDGE_TYPES:
             raise ValueError(f"unknown edge relation: {self.relation!r}")
         self.weight = float(self.weight)
+        if (self.route_x is None) != (self.route_y is None):
+            raise ValueError("route_x and route_y must both be set or both be None")
+        if self.route_x is not None:
+            self.route_x = snap_value(float(self.route_x))
+            self.route_y = snap_value(float(self.route_y))
+
+    @property
+    def has_manual_route(self) -> bool:
+        return self.route_x is not None and self.route_y is not None
+
+    def clear_route(self) -> None:
+        self.route_x = None
+        self.route_y = None
 
     @classmethod
     def create(
@@ -161,7 +207,7 @@ class PlanningEdge:
         *,
         source_id: str,
         target_id: str,
-        relation: str = "Related",
+        relation: str = "Leads To",
         label: str = "",
         weight: float = 1.0,
     ) -> "PlanningEdge":
@@ -180,9 +226,15 @@ class PlanningEdge:
             edge_id=str(payload["edge_id"]),
             source_id=str(payload["source_id"]),
             target_id=str(payload["target_id"]),
-            relation=str(payload.get("relation", "Related")),
+            relation=str(payload.get("relation", "Leads To")),
             label=str(payload.get("label", "")),
             weight=float(payload.get("weight", 1.0)),
+            route_x=(
+                None if payload.get("route_x") is None else float(payload["route_x"])
+            ),
+            route_y=(
+                None if payload.get("route_y") is None else float(payload["route_y"])
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -216,12 +268,10 @@ class PlanningGroup:
             raise ValueError("group node IDs must be unique")
         self.backdrop = bool(self.backdrop)
         self.color = normalize_hex_color(self.color)
-        self.x = float(self.x)
-        self.y = float(self.y)
-        self.width = float(self.width)
-        self.height = float(self.height)
-        if self.width <= 0.0 or self.height <= 0.0:
-            raise ValueError("group width and height must be positive")
+        self.x = snap_value(float(self.x))
+        self.y = snap_value(float(self.y))
+        self.width = snap_dimension(float(self.width), 100.0)
+        self.height = snap_dimension(float(self.height), 75.0)
         self.layer = int(self.layer)
 
     @classmethod
@@ -309,16 +359,13 @@ class PlanningDocument:
         if dangling_edges:
             raise ValueError(f"edges reference missing nodes: {dangling_edges}")
 
-        dangling_groups = [
-            group.group_id
-            for group in self.groups.values()
-            if any(node_id not in known for node_id in group.node_ids)
-        ]
-        if dangling_groups:
-            raise ValueError(f"groups reference missing nodes: {dangling_groups}")
-
         memberships: dict[str, str] = {}
         for group in self.groups.values():
+            missing = [node_id for node_id in group.node_ids if node_id not in known]
+            if missing:
+                raise ValueError(
+                    f"group {group.group_id!r} references missing nodes: {missing}"
+                )
             for node_id in group.node_ids:
                 previous = memberships.get(node_id)
                 if previous is not None:
@@ -345,8 +392,7 @@ class PlanningDocument:
     def add_group(self, group: PlanningGroup) -> None:
         if group.group_id in self.groups:
             raise ValueError(f"duplicate group id: {group.group_id}")
-        known = set(self.nodes)
-        missing = [node_id for node_id in group.node_ids if node_id not in known]
+        missing = [node_id for node_id in group.node_ids if node_id not in self.nodes]
         if missing:
             raise ValueError(f"group references missing nodes: {missing}")
         occupied = {
@@ -368,6 +414,17 @@ class PlanningDocument:
         self.groups.pop(group_id, None)
         self.touch()
 
+    def remove_group_and_nodes(self, group_id: str) -> list[str]:
+        group = self.groups.get(group_id)
+        if group is None:
+            return []
+        node_ids = list(group.node_ids)
+        self.groups.pop(group_id, None)
+        for node_id in node_ids:
+            self.remove_node(node_id)
+        self.touch()
+        return node_ids
+
     def remove_node(self, node_id: str) -> list[str]:
         if node_id not in self.nodes:
             return []
@@ -388,7 +445,6 @@ class PlanningDocument:
                     groups_to_remove.append(group.group_id)
         for group_id in groups_to_remove:
             del self.groups[group_id]
-
         self.touch()
         return removed_edges
 
@@ -418,28 +474,18 @@ class PlanningDocument:
         node_list = [PlanningNode.from_dict(item) for item in payload.get("nodes", [])]
         edge_list = [PlanningEdge.from_dict(item) for item in payload.get("edges", [])]
         group_list = [PlanningGroup.from_dict(item) for item in payload.get("groups", [])]
-
-        nodes = _unique_map(node_list, key=lambda node: node.node_id, label="node")
-        edges = _unique_map(edge_list, key=lambda edge: edge.edge_id, label="edge")
-        groups = _unique_map(group_list, key=lambda group: group.group_id, label="group")
-
         return cls(
             title=str(payload.get("title", "Untitled Planning Graph")),
-            nodes=nodes,
-            edges=edges,
-            groups=groups,
+            nodes=_unique_map(node_list, key=lambda item: item.node_id, label="node"),
+            edges=_unique_map(edge_list, key=lambda item: item.edge_id, label="edge"),
+            groups=_unique_map(group_list, key=lambda item: item.group_id, label="group"),
             version=int(payload.get("version", DOCUMENT_VERSION)),
             created_at=str(payload.get("created_at", _utc_now())),
             updated_at=str(payload.get("updated_at", _utc_now())),
         )
 
 
-def _unique_map(
-    values: Iterable[Any],
-    *,
-    key,
-    label: str,
-) -> dict[str, Any]:
+def _unique_map(values: Iterable[Any], *, key, label: str) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for value in values:
         value_id = key(value)
