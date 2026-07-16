@@ -1,6 +1,6 @@
-# LiSNN Planning Graph - U1
+# LiSNN Planning Graph - U1 Alpha
 
-U1 is a PySide6 graph editor for planning, reasoning, research decomposition, and project mapping. It is deliberately separate from the LiSNN runtime visualizer planned for U2.
+U1 is a PySide6 graph editor for planning, reasoning, research decomposition, project mapping, and human-readable process specification. U2 will reuse the same document model for LiSNN workflow visualization.
 
 ## Launch
 
@@ -11,71 +11,51 @@ python3 -m pip install -r planning_graph\requirements.txt
 python3 main.py
 ```
 
-Use `python3` rather than the Windows `py` launcher in this repository. On the current development system, `py` selects the free-threaded Python 3.14 runtime by default.
+Use `python3`, not the Windows `py` launcher. On the current development system, `py` selects free-threaded Python 3.14 by default.
 
-## Visual language
+## Alpha interaction summary
 
-- The entire application uses a dark theme.
-- The canvas is near-black with half-alpha white dots at 25-unit intersections.
-- Blocks snap to the grid and use fixed 250 x 150 dimensions.
-- Block bodies are dark gray, headers are blue-gray, and text is white.
-- A narrow accent strip color-codes each semantic block type.
-- Connections are color-coded by relationship type.
-- Groups can use low-alpha colored backdrops for rapid visual segmentation.
-
-## Interaction
-
-- Drag semantic block types from the left palette onto the canvas.
-- Hover or select a block to reveal its four connection ports.
-- Drag from a port to another block to create a directed connection.
-- Select the connection type in the top toolbar before drawing.
-- Edit one selected block, connection, or group in the right inspector.
-- Double-click an item to focus its inspector fields.
-- Mouse wheel zooms.
-- Middle-mouse drag pans.
+- Drag a block type from the left palette onto the canvas.
+- Double-click a left-palette block to create it at the center of the visible canvas.
+- Click **+ New Block** to create a persistent custom type and accent color.
+- Drag from a block port to another block to create a connection.
+- New connections default to **Leads To** and display a directional triangle.
+- Select and drag a connection to create a persistent manual route.
+- Right-click a manually routed connection and choose **Reset Automatic Route**.
+- Select a block or group to reveal four grid-snapped resize handles.
+- Edit selected object properties in the right panel; changes appear immediately.
+- `Ctrl+Z` undoes and `Ctrl+Y` redoes graph mutations.
+- Mouse wheel zooms; middle-mouse drag pans.
 - Left-drag on empty canvas creates a rubber-band selection.
-- `Delete` removes selected blocks, connections, or groups.
+- `Delete` removes the selection.
 - `Ctrl+D` duplicates one selected block.
 - `Ctrl+G` groups selected blocks.
 - `Ctrl+Shift+G` ungroups selected groups.
 - `Ctrl+Shift+I` inverts selection.
-- `F` fits the complete graph into the view.
+- `F` fits the full graph into view.
 
-## Right-click menu
+## Visual language
 
-The base context menu provides:
+- Near-black canvas with half-alpha white dots at 25-unit intersections.
+- Dark gray block context, blue-gray headers, white primary text, muted context text.
+- Left block edge indicates block type color.
+- Bottom block edge indicates status color.
+- Status **None** uses the normal header color, producing no additional semantic emphasis.
+- Blocks and group frames resize in even grid-cell increments so centers, sides, and ports remain aligned.
+- Connections are colored by relationship type.
+- Automatic connections sharing a source direction use radial lane spacing.
+- Group backdrops use low-alpha configurable colors and independent layers.
+- Every color selector shows the rendered color and its `#RRGGBB` code.
 
-- Delete
-- Group
-- Invert Selection
+## Configurable block types
 
-Right-clicking a group additionally provides:
+All block types and statuses are defined in:
 
-- Ungroup
-- Add Backdrop / Remove Backdrop
-- Backdrop Color presets and a custom color picker
-- Bring to Front
-- Bring Forward
-- Send Backward
-- Send to Back
+```text
+planning_graph/custom_blocks.json
+```
 
-## Groups and backdrops
-
-A group is persistent membership of two or more blocks. Ungrouping removes only the group metadata and backdrop; all member blocks and connections remain.
-
-A backdrop is optional. Even with the fill removed, a faint dashed group frame and title remain so the group can still be selected and edited.
-
-Selected group frames expose four corner handles. Drag a handle to resize the frame in whole grid cells. Drag the frame itself to move the group and all member blocks together.
-
-The right inspector allows editing:
-
-- group title;
-- backdrop visibility;
-- backdrop color;
-- backdrop layer;
-- width and height in grid cells.
-
-## Planning block types
+The built-in block types are:
 
 - Idea
 - Goal
@@ -86,6 +66,26 @@ The right inspector allows editing:
 - Constraint
 - Result
 - Note
+
+The GUI **+ New Block** dialog adds custom definitions to the same master file. Existing and new graph files refer to block types by name, so custom types remain available across application instances.
+
+A block whose kind is not currently registered is still loadable. The inspector displays it through the **Custom...** entry and exposes its literal kind text.
+
+## Block properties
+
+The live block inspector exposes:
+
+- kind or custom kind;
+- title;
+- status;
+- priority;
+- tags;
+- context/body;
+- width and height in grid cells;
+- header font size;
+- title font size;
+- context font size;
+- footer font size.
 
 ## Directed connection types
 
@@ -98,39 +98,89 @@ The right inspector allows editing:
 - Refines
 - Blocks
 
-## Persistence
+Connections store source, target, type, label, weight, and an optional manual route point. When no manual point exists, the scene calculates a radial automatic route.
 
-Graphs are saved as human-readable, versioned JSON. Exact canvas positions, node metadata, typed directed connections, group membership, backdrop geometry, colors, and layers are preserved.
+## Groups and backdrops
 
-Existing v1 JSON documents without a `groups` field remain valid.
+A group is persistent membership of two or more blocks. Its backdrop is optional and does not define membership.
 
-Use **File -> Load LiSNN Roadmap Example** to open the included project map as an unsaved working copy.
+Right-clicking a group provides:
+
+- Select Group Members
+- Ungroup
+- Delete Group and Blocks
+- Add Backdrop / Remove Backdrop
+- Backdrop Color presets and custom color picker
+- Bring to Front
+- Bring Forward
+- Send Backward
+- Send to Back
+
+Ungrouping preserves blocks and connections. **Delete Group and Blocks** removes the group, all member blocks, and all attached connections. Removing a backdrop preserves the group as a selectable dashed frame.
+
+The right inspector edits group title, backdrop visibility, rendered color, layer, width, and height.
+
+## Undo and redo
+
+Graph mutations are stored as validated document snapshots. This covers:
+
+- creation and deletion;
+- live property edits;
+- movement and resizing;
+- grouping and ungrouping;
+- backdrop and layer changes;
+- connection creation and routing;
+- route reset.
+
+Continuous property typing is merged into one undo entry per selected object. Selection changes, zoom, and pan are not document mutations and are not added to history.
+
+## Saving and loading
+
+The default format is one human-readable `.json` file.
+
+The same graph can also be saved as one SQLite file using:
+
+- `.db`
+- `.sqlite`
+- `.sqlite3`
+
+**Save As** selects either format. **Open** loads either format. JSON and SQLite preserve the same document state:
+
+- blocks and all visual properties;
+- connections and manual routes;
+- groups, membership, backdrops, colors, geometry, and layers;
+- document metadata.
+
+The SQLite format uses structured `metadata`, `nodes`, `edges`, `groups_table`, and `group_nodes` tables. Existing v1 JSON files without groups, dimensions, fonts, statuses, or route points remain loadable through defaults.
 
 ## Module layout
 
 ```text
-main.py                         GUI launcher
-planning_graph/models.py        GUI-independent graph and group data model
-planning_graph/grid.py          shared grid geometry and snapping
-planning_graph/theme.py         dark theme and semantic colors
-planning_graph/serialization.py JSON persistence
-planning_graph/items.py         blocks, groups, backdrops, and typed arrows
-planning_graph/scene.py         canvas, context menu, selection, grouping
-planning_graph/widgets.py       block palette and inspector
-planning_graph/window.py        menus, toolbar, file workflow
-planning_graph/app.py           QApplication bootstrap
-planning_graph/examples/        example planning graphs
+main.py                          GUI launcher
+planning_graph/custom_blocks.json master block/status definitions
+planning_graph/definitions.py    persistent definition registry
+planning_graph/models.py         GUI-independent graph model
+planning_graph/grid.py           shared snapping and geometry
+planning_graph/history.py        undo/redo snapshot commands
+planning_graph/theme.py          dark theme and relation colors
+planning_graph/serialization.py  JSON and SQLite persistence
+planning_graph/items.py          blocks, groups, and routed connections
+planning_graph/scene.py          canvas, routing, grouping, context menus
+planning_graph/widgets.py        palette, new-block dialog, live inspector
+planning_graph/window.py         menus, toolbar, file workflow
+planning_graph/app.py            QApplication bootstrap
+planning_graph/examples/         example graphs
 ```
 
 ## Scope boundary
 
-U1 does not yet:
+U1 alpha does not yet:
 
 - execute a plan;
 - infer blocks or relationships automatically;
 - visualize live LiSNN neuron or hypothesis activity;
-- perform automatic graph layout;
+- perform automatic whole-graph layout;
 - synchronize with external task systems;
 - support nested or overlapping membership groups.
 
-Those remain later features. U1 establishes the visual planning surface and reusable graph document format first.
+Those remain later features. U1 alpha establishes the visual planning surface and portable graph format first.
