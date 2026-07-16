@@ -17,7 +17,7 @@ NODE_MIN_WIDTH = GRID_SIZE * NODE_MIN_WIDTH_CELLS
 NODE_MIN_HEIGHT = GRID_SIZE * NODE_MIN_HEIGHT_CELLS
 
 GROUP_MIN_WIDTH_CELLS = 4
-GROUP_MIN_HEIGHT_CELLS = 3
+GROUP_MIN_HEIGHT_CELLS = 4
 GROUP_MIN_WIDTH = GRID_SIZE * GROUP_MIN_WIDTH_CELLS
 GROUP_MIN_HEIGHT = GRID_SIZE * GROUP_MIN_HEIGHT_CELLS
 
@@ -40,9 +40,19 @@ def snap_dimension(
     minimum: float,
     grid_size: float = GRID_SIZE,
 ) -> float:
-    """Snap a positive dimension while enforcing a minimum."""
+    """Snap a centered item's dimension to an even number of grid cells.
 
-    return max(float(minimum), abs(snap_value(value, grid_size)))
+    Even cell counts keep the item center, all sides, and midpoint connector
+    ports on grid intersections simultaneously.
+    """
+
+    cells = max(2, int(round(abs(float(value)) / grid_size)))
+    minimum_cells = max(2, int(math.ceil(float(minimum) / grid_size)))
+    if cells % 2:
+        cells += 1
+    if minimum_cells % 2:
+        minimum_cells += 1
+    return max(cells, minimum_cells) * grid_size
 
 
 def snap_even_dimension(
@@ -50,20 +60,7 @@ def snap_even_dimension(
     minimum: float,
     grid_size: float = GRID_SIZE,
 ) -> float:
-    """Snap a dimension to an even number of grid cells.
-
-    Blocks are center-positioned. Even cell counts keep the center, all four
-    sides, and all four connector ports on grid intersections simultaneously.
-    """
-
-    snapped = snap_dimension(value, minimum, grid_size)
-    cells = max(2, int(round(snapped / grid_size)))
-    if cells % 2:
-        cells += 1
-    minimum_cells = int(math.ceil(minimum / grid_size))
-    if minimum_cells % 2:
-        minimum_cells += 1
-    return max(cells, minimum_cells) * grid_size
+    return snap_dimension(value, minimum, grid_size)
 
 
 def snap_floor(value: float, grid_size: float = GRID_SIZE) -> float:
