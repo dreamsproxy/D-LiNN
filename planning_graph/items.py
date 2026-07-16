@@ -1,4 +1,4 @@
-"""QGraphics items used by the planning graph canvas."""
+"""Graphics items for blocks, groups, and routed connections."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ from PySide6.QtWidgets import QGraphicsItem, QGraphicsObject
 
 from .definitions import DefinitionRegistry
 from .grid import (
-    GRID_SIZE,
     GROUP_MIN_HEIGHT,
     GROUP_MIN_WIDTH,
     NODE_MIN_HEIGHT,
@@ -48,8 +47,7 @@ HEADER_MIN_HEIGHT = 34.0
 STATUS_BAR_HEIGHT = 6.0
 PORT_RADIUS = 5.0
 PORT_HIT_RADIUS = 13.0
-NODE_HANDLE_SIZE = 12.0
-GROUP_HANDLE_SIZE = 12.0
+RESIZE_HANDLE_SIZE = 12.0
 GROUP_LABEL_HEIGHT = 26.0
 GROUP_Z_BASE = -1000.0
 GROUP_Z_STEP = 0.1
@@ -57,14 +55,57 @@ EDGE_ROUTE_HANDLE_RADIUS = 7.0
 
 
 def _font(size: int, *, bold: bool = False) -> QFont:
-    result = QFont()
-    result.setPointSize(int(size))
-    result.setBold(bold)
-    return result
+    font = QFont()
+    font.setPointSize(int(size))
+    font.setBold(bold)
+    return font
+
+
+def _corner_handles(rect: QRectF) -> dict[str, QRectF]:
+    half = RESIZE_HANDLE_SIZE / 2.0
+    return {
+        "top_left": QRectF(
+            rect.left() - half,
+            rect.top() - half,
+            RESIZE_HANDLE_SIZE,
+            RESIZE_HANDLE_SIZE,
+        ),
+        "top_right": QRectF(
+            rect.right() - half,
+            rect.top() - half,
+            RESIZE_HANDLE_SIZE,
+            RESIZE_HANDLE_SIZE,
+        ),
+        "bottom_left": QRectF(
+            rect.left() - half,
+            rect.bottom() - half,
+            RESIZE_HANDLE_SIZE,
+            RESIZE_HANDLE_SIZE,
+        ),
+        "bottom_right": QRectF(
+            rect.right() - half,
+            rect.bottom() - half,
+            RESIZE_HANDLE_SIZE,
+            RESIZE_HANDLE_SIZE,
+        ),
+    }
+
+
+def _handle_at(handles: dict[str, QRectF], point: QPointF) -> str | None:
+    return next((name for name, rect in handles.items() if rect.contains(point)), None)
+
+
+def _set_resize_cursor(item: QGraphicsObject, handle: str | None) -> None:
+    if handle in ("top_left", "bottom_right"):
+        item.setCursor(Qt.CursorShape.SizeFDiagCursor)
+    elif handle in ("top_right", "bottom_left"):
+        item.setCursor(Qt.CursorShape.SizeBDiagCursor)
+    else:
+        item.unsetCursor()
 
 
 class GraphNodeItem(QGraphicsObject):
-    """Resizable visual block backed directly by a :class:`PlanningNode`."""
+    """Resizable, grid-aligned planning block."""
 
     def __init__(self, model: PlanningNode, registry: DefinitionRegistry) -> None:
         super().__init__()
@@ -94,21 +135,19 @@ class GraphNodeItem(QGraphicsObject):
         )
 
     def boundingRect(self) -> QRectF:
-        padding = max(NODE_HANDLE_SIZE, PORT_HIT_RADIUS) / 2.0 + 3.0
+        padding = max(RESIZE_HANDLE_SIZE, PORT_HIT_RADIUS) / 2.0 + 3.0
         return self.content_rect().adjusted(-padding, -padding, padding, padding)
 
     def paint(self, painter: QPainter, option, widget=None) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         rect = self.content_rect()
-        outline = QColor(SELECTION if self.isSelected() else NODE_BORDER)
+        selected = self.isSelected()
+        outline = QColor(SELECTION if selected else NODE_BORDER)
         accent = QColor(self.registry.block_color(self.model.kind))
         status_color = QColor(self.registry.status_color(self.model.status, NODE_HEADER))
-        header_height = max(
-            HEADER_MIN_HEIGHT,
-            float(self.model.header_font_size + 20),
-        )
+        header_height = max(HEADER_MIN_HEIGHT, float(self.model.header_font_size + 20))
 
-        painter.setPen(QPen(outline, 2.5 if self.isSelected() else 1.4))
+        painter.setPen(QPen(outline, 2.5 if selected else 1.4))
         painter.setBrush(QBrush(QColor(NODE_BODY)))
         painter.drawRoundedRect(rect, 10.0, 10.0)
 
@@ -127,15 +166,20 @@ class GraphNodeItem(QGraphicsObject):
             3.0,
         )
 
-        painter.setFont(_font(self.model.header_font_size, bold=True))
         painter.setPen(QPen(QColor(TEXT), 1.0))
+        painter.setFont(_font(self.model.header_font_size, bold=True))
         painter.drawText(
             QRectF(header.left() + 14.0, header.top(), header.width() * 0.56, header.height()),
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
             self.model.kind.upper(),
         )
         painter.drawText(
-            QRectF(header.left() + header.width() * 0.56, header.top(), header.width() * 0.39, header.height()),
+            QRectF(
+                header.left() + header.width() * 0.56,
+                header.top(),
+                header.width() * 0.39,
+                header.height(),
+            ),
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
             self.model.status,
         )
@@ -182,15 +226,15 @@ class GraphNodeItem(QGraphicsObject):
             "  ".join(footer),
         )
 
-        if self.hovered or self.isSelected():
-            painter.setPen(QPen(QColor(SELECTION if self.isSelected() else TEXT), 1.0))
+        if self.hovered or selected:
+            painter.setPen(QPen(QColor(SELECTION if selected else TEXT), 1.0))
             painter.setBrush(QBrush(QColor(NODE_BODY)))
             for point in self.port_positions().values():
                 painter.drawEllipse(point, PORT_RADIUS, PORT_RADIUS)
-        if self.isSelected():
+        if selected:
             painter.setPen(QPen(QColor(SELECTION), 1.0))
-            for handle_rect in self._handle_rects().values():
-                painter.drawRect(handle_rect)
+            for handle in _corner_handles(rect).values():
+                painter.drawRect(handle)
 
     def port_positions(self) -> dict[str, QPointF]:
         rect = self.content_rect()
@@ -215,25 +259,9 @@ class GraphNodeItem(QGraphicsObject):
     def best_port_scene(self, toward: QPointF) -> QPointF:
         return self.mapToScene(self.port_positions()[self.best_port_name(toward)])
 
-    def port_at(self, local_pos: QPointF) -> str | None:
-        for name, point in self.port_positions().items():
-            if math.hypot(local_pos.x() - point.x(), local_pos.y() - point.y()) <= PORT_HIT_RADIUS:
-                return name
-        return None
-
-    def _handle_rects(self) -> dict[str, QRectF]:
-        rect = self.content_rect()
-        half = NODE_HANDLE_SIZE / 2.0
-        return {
-            "top_left": QRectF(rect.left() - half, rect.top() - half, NODE_HANDLE_SIZE, NODE_HANDLE_SIZE),
-            "top_right": QRectF(rect.right() - half, rect.top() - half, NODE_HANDLE_SIZE, NODE_HANDLE_SIZE),
-            "bottom_left": QRectF(rect.left() - half, rect.bottom() - half, NODE_HANDLE_SIZE, NODE_HANDLE_SIZE),
-            "bottom_right": QRectF(rect.right() - half, rect.bottom() - half, NODE_HANDLE_SIZE, NODE_HANDLE_SIZE),
-        }
-
-    def _handle_at(self, point: QPointF) -> str | None:
-        for name, rect in self._handle_rects().items():
-            if rect.contains(point):
+    def port_at(self, point: QPointF) -> str | None:
+        for name, port in self.port_positions().items():
+            if math.hypot(point.x() - port.x(), point.y() - port.y()) <= PORT_HIT_RADIUS:
                 return name
         return None
 
@@ -243,13 +271,8 @@ class GraphNodeItem(QGraphicsObject):
         super().hoverEnterEvent(event)
 
     def hoverMoveEvent(self, event) -> None:
-        handle = self._handle_at(event.pos()) if self.isSelected() else None
-        if handle in ("top_left", "bottom_right"):
-            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-        elif handle in ("top_right", "bottom_left"):
-            self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-        else:
-            self.unsetCursor()
+        handle = _handle_at(_corner_handles(self.content_rect()), event.pos()) if self.isSelected() else None
+        _set_resize_cursor(self, handle)
         super().hoverMoveEvent(event)
 
     def hoverLeaveEvent(self, event) -> None:
@@ -261,13 +284,20 @@ class GraphNodeItem(QGraphicsObject):
     def mousePressEvent(self, event) -> None:
         scene = self.scene()
         if event.button() == Qt.MouseButton.LeftButton:
-            handle = self._handle_at(event.pos()) if self.isSelected() else None
+            handle = _handle_at(_corner_handles(self.content_rect()), event.pos()) if self.isSelected() else None
             if handle is not None:
                 self._gesture_before = scene.snapshot() if hasattr(scene, "snapshot") else None
                 self._resizing = True
                 self._resize_handle = handle
-                rect = self.sceneBoundingRect()
-                self._resize_origin = (rect.left(), rect.top(), rect.right(), rect.bottom())
+                rect = self.content_rect()
+                top_left = self.mapToScene(rect.topLeft())
+                bottom_right = self.mapToScene(rect.bottomRight())
+                self._resize_origin = (
+                    top_left.x(),
+                    top_left.y(),
+                    bottom_right.x(),
+                    bottom_right.y(),
+                )
                 event.accept()
                 return
             port = self.port_at(event.pos())
@@ -308,7 +338,7 @@ class GraphNodeItem(QGraphicsObject):
             event.accept()
             return
         was_resizing = self._resizing
-        if self._resizing:
+        if was_resizing:
             self._resizing = False
             self._resize_handle = None
             self._resize_origin = None
@@ -333,16 +363,16 @@ class GraphNodeItem(QGraphicsObject):
     def set_scene_rect(self, x: float, y: float, width: float, height: float) -> None:
         width = snap_dimension(width, NODE_MIN_WIDTH)
         height = snap_dimension(height, NODE_MIN_HEIGHT)
-        x = snap_value(x)
-        y = snap_value(y)
-        center_x = x + width / 2.0
-        center_y = y + height / 2.0
+        left = snap_value(x)
+        top = snap_value(y)
+        center_x = snap_value(left + width / 2.0)
+        center_y = snap_value(top + height / 2.0)
         self.prepareGeometryChange()
         self.model.width = width
         self.model.height = height
-        self.setPos(snap_value(center_x), snap_value(center_y))
-        self.model.x = float(self.pos().x())
-        self.model.y = float(self.pos().y())
+        self.setPos(center_x, center_y)
+        self.model.x = center_x
+        self.model.y = center_y
         self.update()
         scene = self.scene()
         if hasattr(scene, "node_geometry_live"):
@@ -362,7 +392,7 @@ class GraphNodeItem(QGraphicsObject):
 
 
 class GraphGroupItem(QGraphicsObject):
-    """Selectable, movable, grid-resizable visual container for a group."""
+    """Movable and resizable visual group frame."""
 
     def __init__(self, model: PlanningGroup) -> None:
         super().__init__()
@@ -386,7 +416,7 @@ class GraphGroupItem(QGraphicsObject):
         return QRectF(0.0, 0.0, self.model.width, self.model.height)
 
     def boundingRect(self) -> QRectF:
-        padding = GROUP_HANDLE_SIZE / 2.0 + 3.0
+        padding = RESIZE_HANDLE_SIZE / 2.0 + 3.0
         return self.content_rect().adjusted(-padding, -padding, padding, padding)
 
     def refresh_layer(self) -> None:
@@ -409,11 +439,11 @@ class GraphGroupItem(QGraphicsObject):
         painter.drawRoundedRect(rect, 12.0, 12.0)
 
         painter.setFont(_font(9, bold=True))
-        label_width = min(
+        width = min(
             max(110.0, float(painter.fontMetrics().horizontalAdvance(self.model.title) + 24)),
             max(110.0, self.model.width - 16.0),
         )
-        label_rect = QRectF(8.0, 8.0, label_width, GROUP_LABEL_HEIGHT)
+        label_rect = QRectF(8.0, 8.0, width, GROUP_LABEL_HEIGHT)
         label_fill = QColor(color)
         label_fill.setAlpha(225)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -428,34 +458,12 @@ class GraphGroupItem(QGraphicsObject):
         if self.isSelected():
             painter.setPen(QPen(QColor(SELECTION), 1.0))
             painter.setBrush(QBrush(QColor(NODE_BODY)))
-            for handle_rect in self._handle_rects().values():
-                painter.drawRect(handle_rect)
-
-    def _handle_rects(self) -> dict[str, QRectF]:
-        half = GROUP_HANDLE_SIZE / 2.0
-        width = self.model.width
-        height = self.model.height
-        return {
-            "top_left": QRectF(-half, -half, GROUP_HANDLE_SIZE, GROUP_HANDLE_SIZE),
-            "top_right": QRectF(width - half, -half, GROUP_HANDLE_SIZE, GROUP_HANDLE_SIZE),
-            "bottom_left": QRectF(-half, height - half, GROUP_HANDLE_SIZE, GROUP_HANDLE_SIZE),
-            "bottom_right": QRectF(width - half, height - half, GROUP_HANDLE_SIZE, GROUP_HANDLE_SIZE),
-        }
-
-    def _handle_at(self, point: QPointF) -> str | None:
-        for name, rect in self._handle_rects().items():
-            if rect.contains(point):
-                return name
-        return None
+            for handle in _corner_handles(rect).values():
+                painter.drawRect(handle)
 
     def hoverMoveEvent(self, event) -> None:
-        handle = self._handle_at(event.pos()) if self.isSelected() else None
-        if handle in ("top_left", "bottom_right"):
-            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-        elif handle in ("top_right", "bottom_left"):
-            self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-        else:
-            self.unsetCursor()
+        handle = _handle_at(_corner_handles(self.content_rect()), event.pos()) if self.isSelected() else None
+        _set_resize_cursor(self, handle)
         super().hoverMoveEvent(event)
 
     def hoverLeaveEvent(self, event) -> None:
@@ -466,12 +474,19 @@ class GraphGroupItem(QGraphicsObject):
         scene = self.scene()
         if event.button() == Qt.MouseButton.LeftButton:
             self._gesture_before = scene.snapshot() if hasattr(scene, "snapshot") else None
-            handle = self._handle_at(event.pos()) if self.isSelected() else None
+            handle = _handle_at(_corner_handles(self.content_rect()), event.pos()) if self.isSelected() else None
             if handle is not None:
                 self._resizing = True
                 self._resize_handle = handle
-                rect = self.sceneBoundingRect()
-                self._resize_origin = (rect.left(), rect.top(), rect.right(), rect.bottom())
+                rect = self.content_rect()
+                top_left = self.mapToScene(rect.topLeft())
+                bottom_right = self.mapToScene(rect.bottomRight())
+                self._resize_origin = (
+                    top_left.x(),
+                    top_left.y(),
+                    bottom_right.x(),
+                    bottom_right.y(),
+                )
                 event.accept()
                 return
         super().mousePressEvent(event)
@@ -496,7 +511,7 @@ class GraphGroupItem(QGraphicsObject):
 
     def mouseReleaseEvent(self, event) -> None:
         was_resizing = self._resizing
-        if self._resizing:
+        if was_resizing:
             self._resizing = False
             self._resize_handle = None
             self._resize_origin = None
@@ -543,12 +558,12 @@ class GraphGroupItem(QGraphicsObject):
             value = QPointF(snap_value(value.x()), snap_value(value.y()))
         result = super().itemChange(change, value)
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
-            new_x = float(self.pos().x())
-            new_y = float(self.pos().y())
-            dx = new_x - self.model.x
-            dy = new_y - self.model.y
-            self.model.x = new_x
-            self.model.y = new_y
+            x = float(self.pos().x())
+            y = float(self.pos().y())
+            dx = x - self.model.x
+            dy = y - self.model.y
+            self.model.x = x
+            self.model.y = y
             scene = self.scene()
             if not self._resizing and (dx or dy) and hasattr(scene, "move_group_nodes"):
                 scene.move_group_nodes(self.model.group_id, dx, dy)
@@ -576,6 +591,7 @@ class GraphEdgeItem(QGraphicsObject):
         self.route_point = QPointF()
         self.lane_offset = 0.0
         self._dragging_route = False
+        self._route_moved = False
         self._gesture_before: dict[str, Any] | None = None
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setAcceptHoverEvents(True)
@@ -589,10 +605,8 @@ class GraphEdgeItem(QGraphicsObject):
 
     def update_geometry(self) -> None:
         self.prepareGeometryChange()
-        source_center = self.source.scenePos()
-        target_center = self.target.scenePos()
-        start = self.source.best_port_scene(target_center)
-        end = self.target.best_port_scene(source_center)
+        start = self.source.best_port_scene(self.target.scenePos())
+        end = self.target.best_port_scene(self.source.scenePos())
         if self.model.has_manual_route:
             route = QPointF(float(self.model.route_x), float(self.model.route_y))
         else:
@@ -600,10 +614,11 @@ class GraphEdgeItem(QGraphicsObject):
             dx = end.x() - start.x()
             dy = end.y() - start.y()
             length = max(1.0, math.hypot(dx, dy))
-            normal = QPointF(-dy / length, dx / length)
-            route = midpoint + normal * self.lane_offset
+            route = QPointF(
+                midpoint.x() + (-dy / length) * self.lane_offset,
+                midpoint.y() + (dx / length) * self.lane_offset,
+            )
         self.route_point = route
-
         path = QPainterPath(start)
         path.quadTo(route, end)
         self.path = path
@@ -612,27 +627,29 @@ class GraphEdgeItem(QGraphicsObject):
         tangent = path.pointAtPercent(0.965)
         angle = math.atan2(end.y() - tangent.y(), end.x() - tangent.x())
         arrow_size = 13.0 if self.model.relation == "Leads To" else 10.0
-        left = QPointF(
-            end.x() - arrow_size * math.cos(angle - math.pi / 6),
-            end.y() - arrow_size * math.sin(angle - math.pi / 6),
+        self.arrow = QPolygonF(
+            [
+                end,
+                QPointF(
+                    end.x() - arrow_size * math.cos(angle - math.pi / 6),
+                    end.y() - arrow_size * math.sin(angle - math.pi / 6),
+                ),
+                QPointF(
+                    end.x() - arrow_size * math.cos(angle + math.pi / 6),
+                    end.y() - arrow_size * math.sin(angle + math.pi / 6),
+                ),
+            ]
         )
-        right = QPointF(
-            end.x() - arrow_size * math.cos(angle + math.pi / 6),
-            end.y() - arrow_size * math.sin(angle + math.pi / 6),
-        )
-        self.arrow = QPolygonF([end, left, right])
         self.update()
 
     def boundingRect(self) -> QRectF:
-        rect = self.path.boundingRect().united(
-            QRectF(
-                self.route_point.x() - EDGE_ROUTE_HANDLE_RADIUS,
-                self.route_point.y() - EDGE_ROUTE_HANDLE_RADIUS,
-                EDGE_ROUTE_HANDLE_RADIUS * 2,
-                EDGE_ROUTE_HANDLE_RADIUS * 2,
-            )
+        handle_rect = QRectF(
+            self.route_point.x() - EDGE_ROUTE_HANDLE_RADIUS,
+            self.route_point.y() - EDGE_ROUTE_HANDLE_RADIUS,
+            EDGE_ROUTE_HANDLE_RADIUS * 2,
+            EDGE_ROUTE_HANDLE_RADIUS * 2,
         )
-        return rect.adjusted(-28.0, -28.0, 28.0, 28.0)
+        return self.path.boundingRect().united(handle_rect).adjusted(-28.0, -28.0, 28.0, 28.0)
 
     def shape(self) -> QPainterPath:
         stroker = QPainterPathStroker()
@@ -653,9 +670,9 @@ class GraphEdgeItem(QGraphicsObject):
         label_rect = painter.fontMetrics().boundingRect(label).adjusted(-6, -4, 6, 4)
         label_rect.moveCenter(self.label_point.toPoint())
         painter.setPen(Qt.PenStyle.NoPen)
-        label_fill = QColor(NODE_BODY)
-        label_fill.setAlpha(235)
-        painter.setBrush(QBrush(label_fill))
+        fill = QColor(NODE_BODY)
+        fill.setAlpha(235)
+        painter.setBrush(QBrush(fill))
         painter.drawRoundedRect(QRectF(label_rect), 4.0, 4.0)
         painter.setPen(QPen(color, 1.0))
         painter.drawText(QRectF(label_rect), Qt.AlignmentFlag.AlignCenter, label)
@@ -675,15 +692,14 @@ class GraphEdgeItem(QGraphicsObject):
             scene = self.scene()
             self._gesture_before = scene.snapshot() if hasattr(scene, "snapshot") else None
             self._dragging_route = True
-            self.model.route_x = snap_value(event.scenePos().x())
-            self.model.route_y = snap_value(event.scenePos().y())
-            self.update_geometry()
+            self._route_moved = False
             event.accept()
             return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
         if self._dragging_route:
+            self._route_moved = True
             self.model.route_x = snap_value(event.scenePos().x())
             self.model.route_y = snap_value(event.scenePos().y())
             self.update_geometry()
@@ -698,9 +714,10 @@ class GraphEdgeItem(QGraphicsObject):
         if self._dragging_route:
             self._dragging_route = False
             scene = self.scene()
-            if self._gesture_before is not None and hasattr(scene, "commit_external_change"):
+            if self._route_moved and self._gesture_before is not None and hasattr(scene, "commit_external_change"):
                 scene.commit_external_change("Route connection", self._gesture_before)
             self._gesture_before = None
+            self._route_moved = False
             event.accept()
             return
         super().mouseReleaseEvent(event)
