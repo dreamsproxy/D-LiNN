@@ -1,6 +1,6 @@
 """Serializable data model for the LiSNN planning graph.
 
-The model is intentionally independent from PyQt6 so it can be unit tested,
+The model is intentionally independent from Qt so it can be unit tested,
 versioned, and reused by future non-GUI planning and LiSNN visualization tools.
 """
 
