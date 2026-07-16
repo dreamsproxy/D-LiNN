@@ -1,0 +1,3 @@
+[submodule "legacy/LiNN_snapshot"]
+	path = legacy/LiNN_snapshot
+	url = https://github.com/dreamsproxy/LiNN.git
