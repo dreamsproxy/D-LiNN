@@ -154,7 +154,7 @@
       "body": "Visual diagrams.io-like planning surface for ideas, plans, evidence, decisions, and typed relationships.",
       "status": "Active",
       "priority": 4,
-      "tags": ["PyQt6", "visualization"],
+      "tags": ["PySide6", "visualization"],
       "x": -100.0,
       "y": 250.0
     },
