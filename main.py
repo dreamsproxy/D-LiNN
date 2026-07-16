@@ -1,10 +1,10 @@
 """Launch the LiSNN planning graph GUI.
 
 Install:
-    py -m pip install PySide6
+    python3 -m pip install PySide6
 
 Run:
-    py main.py
+    python3 main.py
 """
 
 from planning_graph.app import main
