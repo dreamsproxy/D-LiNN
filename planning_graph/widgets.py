@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import QMimeData, Qt, pyqtSignal
-from PyQt6.QtGui import QDrag
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QMimeData, Qt, Signal
+from PySide6.QtGui import QDrag
+from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
@@ -53,8 +53,8 @@ class NodePalette(QListWidget):
 
 
 class InspectorPanel(QWidget):
-    node_applied = pyqtSignal(str, dict)
-    edge_applied = pyqtSignal(str, dict)
+    node_applied = Signal(str, dict)
+    edge_applied = Signal(str, dict)
 
     def __init__(self) -> None:
         super().__init__()
