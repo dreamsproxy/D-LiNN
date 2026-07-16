@@ -207,7 +207,6 @@ class PlanningGraphWindow(QMainWindow):
     def _mark_dirty(self) -> None:
         self.dirty = True
         self._update_title()
-        self._refresh_selected_inspector()
 
     def _history_clean_changed(self, clean: bool) -> None:
         if clean:
