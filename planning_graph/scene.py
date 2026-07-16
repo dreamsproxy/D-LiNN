@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
+
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QGraphicsPathItem,
     QGraphicsScene,
@@ -11,6 +13,7 @@ from PySide6.QtWidgets import (
     QGraphicsView,
 )
 
+from .grid import GRID_SIZE, snap_xy
 from .items import GraphEdgeItem, GraphNodeItem
 from .models import PlanningDocument, PlanningEdge, PlanningNode
 
@@ -56,11 +59,12 @@ class PlanningScene(QGraphicsScene):
             self._add_edge_item(edge)
 
     def create_node(self, kind: str, pos: QPointF, title: str | None = None) -> PlanningNode:
+        x, y = snap_xy(pos.x(), pos.y())
         node = PlanningNode.create(
             kind=kind,
             title=title or f"New {kind}",
-            x=pos.x(),
-            y=pos.y(),
+            x=x,
+            y=y,
         )
         self.document.add_node(node)
         item = self._add_node_item(node)
@@ -149,6 +153,10 @@ class PlanningScene(QGraphicsScene):
         if len(selected) != 1:
             return
         source = selected[0].model
+        x, y = snap_xy(
+            source.x + 2.0 * GRID_SIZE,
+            source.y + 2.0 * GRID_SIZE,
+        )
         node = PlanningNode.create(
             kind=source.kind,
             title=f"{source.title} (copy)",
@@ -156,8 +164,8 @@ class PlanningScene(QGraphicsScene):
             status=source.status,
             priority=source.priority,
             tags=source.tags.copy(),
-            x=source.x + 36.0,
-            y=source.y + 36.0,
+            x=x,
+            y=y,
         )
         self.document.add_node(node)
         item = self._add_node_item(node)
@@ -220,23 +228,25 @@ class PlanningScene(QGraphicsScene):
 
     def drawBackground(self, painter: QPainter, rect: QRectF) -> None:
         super().drawBackground(painter, rect)
-        minor = 25
-        major = 100
-        left = int(rect.left()) - (int(rect.left()) % minor)
-        top = int(rect.top()) - (int(rect.top()) % minor)
 
-        minor_pen = QPen(QColor("#edf0f3"), 1.0)
-        major_pen = QPen(QColor("#d8dde3"), 1.0)
+        left = math.floor(rect.left() / GRID_SIZE) * GRID_SIZE
+        top = math.floor(rect.top() / GRID_SIZE) * GRID_SIZE
+        points = QPolygonF()
+
         x = left
-        while x < rect.right():
-            painter.setPen(major_pen if x % major == 0 else minor_pen)
-            painter.drawLine(int(x), int(rect.top()), int(x), int(rect.bottom()))
-            x += minor
-        y = top
-        while y < rect.bottom():
-            painter.setPen(major_pen if y % major == 0 else minor_pen)
-            painter.drawLine(int(rect.left()), int(y), int(rect.right()), int(y))
-            y += minor
+        while x <= rect.right():
+            y = top
+            while y <= rect.bottom():
+                points.append(QPointF(x, y))
+                y += GRID_SIZE
+            x += GRID_SIZE
+
+        dot_pen = QPen(QColor(255, 255, 255, 128))
+        dot_pen.setWidthF(2.0)
+        dot_pen.setCosmetic(True)
+        dot_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(dot_pen)
+        painter.drawPoints(points)
 
 
 class PlanningView(QGraphicsView):
