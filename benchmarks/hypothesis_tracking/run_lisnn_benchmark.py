@@ -57,8 +57,6 @@ def main() -> None:
     print(f"Pairwise ranking accuracy: {accuracy:.3f}")
     print("Final hypothesis state:")
 
-    public_states = substrate.step if False else None
-    del public_states
     for hypothesis_id in predicted:
         population = exported["populations"][hypothesis_id]
         confidence = (
