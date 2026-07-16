@@ -45,6 +45,27 @@ def snap_dimension(
     return max(float(minimum), abs(snap_value(value, grid_size)))
 
 
+def snap_even_dimension(
+    value: float,
+    minimum: float,
+    grid_size: float = GRID_SIZE,
+) -> float:
+    """Snap a dimension to an even number of grid cells.
+
+    Blocks are center-positioned. Even cell counts keep the center, all four
+    sides, and all four connector ports on grid intersections simultaneously.
+    """
+
+    snapped = snap_dimension(value, minimum, grid_size)
+    cells = max(2, int(round(snapped / grid_size)))
+    if cells % 2:
+        cells += 1
+    minimum_cells = int(math.ceil(minimum / grid_size))
+    if minimum_cells % 2:
+        minimum_cells += 1
+    return max(cells, minimum_cells) * grid_size
+
+
 def snap_floor(value: float, grid_size: float = GRID_SIZE) -> float:
     if grid_size <= 0.0:
         raise ValueError("grid_size must be positive")
