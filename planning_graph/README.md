@@ -1,13 +1,20 @@
 # LiSNN Planning Graph - U1
 
-U1 is a PyQt6 graph editor for planning, reasoning, research decomposition, and project mapping. It is deliberately separate from the LiSNN runtime visualizer planned for U2.
+U1 is a PySide6 graph editor for planning, reasoning, research decomposition, and project mapping. It is deliberately separate from the LiSNN runtime visualizer planned for U2.
 
 ## Launch
 
 From the LiSNN repository root:
 
 ```powershell
-py -m pip install PyQt6
+py -m pip install PySide6
+py main.py
+```
+
+Or install through the feature requirements file:
+
+```powershell
+py -m pip install -r planning_graph\requirements.txt
 py main.py
 ```
 
