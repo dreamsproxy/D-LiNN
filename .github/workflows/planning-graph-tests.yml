@@ -1,0 +1,24 @@
+name: Planning Graph Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/planning-graph-u1-v0.1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install GUI dependency
+        run: python3 -m pip install -r planning_graph/requirements.txt
+      - name: Compile Python sources
+        run: python3 -m compileall -q cognitive substrates benchmarks planning_graph tests main.py
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python3 -m unittest discover -s tests -v
