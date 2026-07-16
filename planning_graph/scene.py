@@ -297,23 +297,24 @@ class PlanningScene(QGraphicsScene):
     def update_node_properties(self, node_id: str, payload: dict[str, Any]) -> None:
         def operation() -> None:
             node = self.document.nodes[node_id]
+            item = self.node_items[node_id]
+            desired_width = float(payload.get("width", node.width))
+            desired_height = float(payload.get("height", node.height))
+            left = node.x - desired_width / 2.0
+            top = node.y - desired_height / 2.0
             node.kind = str(payload.get("kind", node.kind)).strip() or node.kind
             node.title = str(payload.get("title", node.title)).strip() or "Untitled"
             node.body = str(payload.get("body", node.body))
             node.status = str(payload.get("status", node.status)).strip() or "None"
             node.priority = int(payload.get("priority", node.priority))
             node.tags = list(payload.get("tags", node.tags))
-            node.width = float(payload.get("width", node.width))
-            node.height = float(payload.get("height", node.height))
             node.header_font_size = int(payload.get("header_font_size", node.header_font_size))
             node.title_font_size = int(payload.get("title_font_size", node.title_font_size))
             node.body_font_size = int(payload.get("body_font_size", node.body_font_size))
             node.footer_font_size = int(payload.get("footer_font_size", node.footer_font_size))
+            item.set_scene_rect(left, top, desired_width, desired_height)
             node.__post_init__()
-            item = self.node_items[node_id]
-            item.prepareGeometryChange()
             item.update()
-            self.node_geometry_live(node_id)
 
         self._mutate(
             "Edit block",
