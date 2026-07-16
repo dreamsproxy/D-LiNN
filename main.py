@@ -1,7 +1,7 @@
 """Launch the LiSNN planning graph GUI.
 
 Install:
-    py -m pip install PyQt6
+    py -m pip install PySide6
 
 Run:
     py main.py
