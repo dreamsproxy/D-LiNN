@@ -18,14 +18,13 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsObject
 
+from .grid import NODE_HEIGHT, NODE_WIDTH, snap_value, snap_xy
 from .models import PlanningEdge, PlanningNode
 
 if TYPE_CHECKING:
     from .scene import PlanningScene
 
 
-NODE_WIDTH = 230.0
-NODE_HEIGHT = 142.0
 HEADER_HEIGHT = 34.0
 PORT_RADIUS = 5.0
 PORT_HIT_RADIUS = 13.0
@@ -61,12 +60,16 @@ class GraphNodeItem(QGraphicsObject):
         super().__init__()
         self.model = model
         self.hovered = False
-        self.setPos(model.x, model.y)
         self.setAcceptHoverEvents(True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setCacheMode(QGraphicsItem.CacheMode.DeviceCoordinateCache)
+
+        snapped_x, snapped_y = snap_xy(model.x, model.y)
+        self.model.x = snapped_x
+        self.model.y = snapped_y
+        self.setPos(snapped_x, snapped_y)
 
     def boundingRect(self) -> QRectF:
         return QRectF(-NODE_WIDTH / 2, -NODE_HEIGHT / 2, NODE_WIDTH, NODE_HEIGHT)
@@ -220,6 +223,9 @@ class GraphNodeItem(QGraphicsObject):
         super().mouseDoubleClickEvent(event)
 
     def itemChange(self, change, value):
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange:
+            value = QPointF(snap_value(value.x()), snap_value(value.y()))
+
         result = super().itemChange(change, value)
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
             self.model.x = float(self.pos().x())
