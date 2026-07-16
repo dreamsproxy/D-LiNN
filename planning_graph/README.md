@@ -7,16 +7,18 @@ U1 is a PySide6 graph editor for planning, reasoning, research decomposition, an
 From the LiSNN repository root:
 
 ```powershell
-py -m pip install PySide6
-py main.py
+python3 -m pip install PySide6
+python3 main.py
 ```
 
 Or install through the feature requirements file:
 
 ```powershell
-py -m pip install -r planning_graph\requirements.txt
-py main.py
+python3 -m pip install -r planning_graph\requirements.txt
+python3 main.py
 ```
+
+Use `python3` rather than the Windows `py` launcher in this repository. On the current development system, `py` selects the free-threaded Python 3.14 runtime by default.
 
 ## Interaction
 
