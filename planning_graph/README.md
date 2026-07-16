@@ -8,8 +8,11 @@ From the LiSNN repository root:
 
 ```powershell
 python3 -m pip install -r planning_graph\requirements.txt
+python3 -m unittest discover -s tests -v
 python3 main.py
 ```
+
+The current alpha branch passes 42 tests, including offscreen PySide6 scene and window tests.
 
 Use `python3`, not the Windows `py` launcher. On the current development system, `py` selects free-threaded Python 3.14 by default.
 
