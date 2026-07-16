@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import (
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import (
     QBrush,
     QColor,
     QFont,
@@ -16,7 +16,7 @@ from PyQt6.QtGui import (
     QPen,
     QPolygonF,
 )
-from PyQt6.QtWidgets import QGraphicsItem, QGraphicsObject
+from PySide6.QtWidgets import QGraphicsItem, QGraphicsObject
 
 from .models import PlanningEdge, PlanningNode
 
