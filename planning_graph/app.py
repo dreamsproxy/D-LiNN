@@ -1,4 +1,4 @@
-"""Application entry point for the LiSNN U1 planning graph."""
+"""Application entry point for the LiSNN U1 alpha planning graph."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .window import PlanningGraphWindow
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("LiSNN Planning Graph")
+    app.setApplicationName("LiSNN Planning Graph U1 Alpha")
     apply_dark_theme(app)
     window = PlanningGraphWindow()
     window.show()
