@@ -35,6 +35,16 @@ Use `python3` rather than the Windows `py` launcher in this repository. On the c
 - `Ctrl+D` duplicates one selected node.
 - `F` fits the complete graph into the view.
 
+## Grid geometry
+
+The planning canvas uses a 25-unit dotted grid.
+
+- Grid intersections are rendered as half-alpha white dots.
+- Node centers snap to the nearest grid intersection while dragging or dropping.
+- Each node is exactly 10 grid cells wide and 6 grid cells high.
+- Because both dimensions use an even number of cells, all four node ports also land on grid intersections.
+- Saved node coordinates therefore remain grid-aligned.
+
 ## Planning node types
 
 - Idea
@@ -68,6 +78,7 @@ Use **File -> Load LiSNN Roadmap Example** to open the included project map as a
 
 ```text
 main.py                         GUI launcher
+planning_graph/grid.py          shared grid size, node dimensions, snapping
 planning_graph/models.py        GUI-independent graph data model
 planning_graph/serialization.py JSON persistence
 planning_graph/items.py         visual nodes and typed arrows
