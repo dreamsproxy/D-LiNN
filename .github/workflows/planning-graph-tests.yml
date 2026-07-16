@@ -21,4 +21,16 @@ jobs:
       - name: Run tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python3 -m unittest discover -s tests -v
+        shell: bash
+        run: |
+          set +e
+          python3 -m unittest discover -s tests -v > test-output.txt 2>&1
+          status=$?
+          cat test-output.txt
+          exit $status
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: planning-graph-test-output
+          path: test-output.txt
