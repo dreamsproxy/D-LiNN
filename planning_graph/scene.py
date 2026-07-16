@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import (
     QGraphicsPathItem,
     QGraphicsScene,
     QGraphicsSceneDragDropEvent,
@@ -19,9 +19,9 @@ MIME_NODE_KIND = "application/x-lisnn-planning-node-kind"
 
 
 class PlanningScene(QGraphicsScene):
-    document_changed = pyqtSignal()
-    edit_node_requested = pyqtSignal(str)
-    edit_edge_requested = pyqtSignal(str)
+    document_changed = Signal()
+    edit_node_requested = Signal(str)
+    edit_edge_requested = Signal(str)
 
     def __init__(self, document: PlanningDocument | None = None) -> None:
         super().__init__(-5000.0, -5000.0, 10000.0, 10000.0)
