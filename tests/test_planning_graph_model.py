@@ -7,6 +7,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from planning_graph.grid import (
+    GRID_SIZE,
+    NODE_HEIGHT,
+    NODE_WIDTH,
+    is_grid_aligned,
+    snap_value,
+    snap_xy,
+)
 from planning_graph.models import PlanningDocument, PlanningEdge, PlanningNode
 from planning_graph.serialization import load_document, save_document
 
@@ -88,6 +96,25 @@ class PlanningGraphModelTests(unittest.TestCase):
                 target_id="N1",
                 relation="Related",
             )
+
+    def test_grid_snapping_rounds_half_cells_away_from_zero(self) -> None:
+        self.assertEqual(snap_value(12.4), 0.0)
+        self.assertEqual(snap_value(12.5), GRID_SIZE)
+        self.assertEqual(snap_value(-12.4), 0.0)
+        self.assertEqual(snap_value(-12.5), -GRID_SIZE)
+        self.assertEqual(snap_value(37.5), 2.0 * GRID_SIZE)
+
+    def test_snap_xy_aligns_both_coordinates(self) -> None:
+        x, y = snap_xy(63.0, -88.0)
+        self.assertEqual((x, y), (75.0, -100.0))
+        self.assertTrue(is_grid_aligned(x))
+        self.assertTrue(is_grid_aligned(y))
+
+    def test_node_dimensions_and_ports_align_to_grid(self) -> None:
+        self.assertEqual(NODE_WIDTH, 10.0 * GRID_SIZE)
+        self.assertEqual(NODE_HEIGHT, 6.0 * GRID_SIZE)
+        self.assertTrue(is_grid_aligned(NODE_WIDTH / 2.0))
+        self.assertTrue(is_grid_aligned(NODE_HEIGHT / 2.0))
 
 
 if __name__ == "__main__":
