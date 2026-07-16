@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .items import GraphEdgeItem, GraphNodeItem
+from .items import GraphEdgeItem, GraphGroupItem, GraphNodeItem
 from .models import EDGE_TYPES, PlanningDocument
 from .scene import PlanningScene, PlanningView
 from .serialization import load_document, save_document
@@ -44,16 +44,16 @@ class PlanningGraphWindow(QMainWindow):
         self._build_toolbar()
         self._connect_signals()
         self.statusBar().showMessage(
-            "Drag nodes from the left. Drag from a node port to connect. Middle-drag pans; wheel zooms."
+            "Drag blocks from the left. Right-click for delete, group, invert, and backdrop controls."
         )
         self._update_title()
 
     def _build_central_layout(self) -> None:
         palette_panel = QWidget()
         palette_layout = QVBoxLayout(palette_panel)
-        palette_title = QLabel("Planning Nodes")
+        palette_title = QLabel("Planning Blocks")
         palette_title.setStyleSheet("font-size: 15px; font-weight: 700;")
-        help_label = QLabel("Drag a semantic node onto the canvas.")
+        help_label = QLabel("Drag a semantic block onto the canvas.")
         help_label.setWordWrap(True)
         palette_layout.addWidget(palette_title)
         palette_layout.addWidget(help_label)
@@ -63,7 +63,7 @@ class PlanningGraphWindow(QMainWindow):
         splitter.addWidget(palette_panel)
         splitter.addWidget(self.view)
         splitter.addWidget(self.inspector)
-        splitter.setSizes([210, 1030, 300])
+        splitter.setSizes([210, 1030, 320])
         splitter.setStretchFactor(1, 1)
         self.setCentralWidget(splitter)
 
@@ -91,9 +91,21 @@ class PlanningGraphWindow(QMainWindow):
         self.delete_action.setShortcut(QKeySequence.StandardKey.Delete)
         self.delete_action.triggered.connect(self.scene.delete_selected)
 
-        self.duplicate_action = QAction("Duplicate Node", self)
+        self.duplicate_action = QAction("Duplicate Block", self)
         self.duplicate_action.setShortcut("Ctrl+D")
         self.duplicate_action.triggered.connect(self.scene.duplicate_selected_node)
+
+        self.group_action = QAction("Group Selected Blocks", self)
+        self.group_action.setShortcut("Ctrl+G")
+        self.group_action.triggered.connect(self.scene.group_selected_nodes)
+
+        self.ungroup_action = QAction("Ungroup Selected", self)
+        self.ungroup_action.setShortcut("Ctrl+Shift+G")
+        self.ungroup_action.triggered.connect(self.scene.ungroup_selected)
+
+        self.invert_action = QAction("Invert Selection", self)
+        self.invert_action.setShortcut("Ctrl+Shift+I")
+        self.invert_action.triggered.connect(self.scene.invert_selection)
 
         self.fit_action = QAction("Fit Graph", self)
         self.fit_action.setShortcut("F")
@@ -111,6 +123,11 @@ class PlanningGraphWindow(QMainWindow):
 
         edit_menu = self.menuBar().addMenu("Edit")
         edit_menu.addAction(self.duplicate_action)
+        edit_menu.addSeparator()
+        edit_menu.addAction(self.group_action)
+        edit_menu.addAction(self.ungroup_action)
+        edit_menu.addAction(self.invert_action)
+        edit_menu.addSeparator()
         edit_menu.addAction(self.delete_action)
 
         view_menu = self.menuBar().addMenu("View")
@@ -125,6 +142,8 @@ class PlanningGraphWindow(QMainWindow):
         toolbar.addAction(self.save_action)
         toolbar.addSeparator()
         toolbar.addAction(self.duplicate_action)
+        toolbar.addAction(self.group_action)
+        toolbar.addAction(self.ungroup_action)
         toolbar.addAction(self.delete_action)
         toolbar.addAction(self.fit_action)
         toolbar.addSeparator()
@@ -139,8 +158,11 @@ class PlanningGraphWindow(QMainWindow):
         self.scene.selectionChanged.connect(self._selection_changed)
         self.scene.edit_node_requested.connect(self._focus_node)
         self.scene.edit_edge_requested.connect(self._focus_edge)
+        self.scene.edit_group_requested.connect(self._focus_group)
+        self.scene.status_message.connect(lambda message: self.statusBar().showMessage(message, 5000))
         self.inspector.node_applied.connect(self._apply_node_changes)
         self.inspector.edge_applied.connect(self._apply_edge_changes)
+        self.inspector.group_applied.connect(self._apply_group_changes)
 
     def _set_default_relation(self, relation: str) -> None:
         self.scene.default_relation = relation
@@ -164,6 +186,13 @@ class PlanningGraphWindow(QMainWindow):
             self.inspector.show_node(item.model)
         elif isinstance(item, GraphEdgeItem):
             self.inspector.show_edge(item.model)
+        elif isinstance(item, GraphGroupItem):
+            titles = [
+                self.scene.document.nodes[node_id].title
+                for node_id in item.model.node_ids
+                if node_id in self.scene.document.nodes
+            ]
+            self.inspector.show_group(item.model, titles)
         else:
             self.inspector.show_empty()
 
@@ -185,11 +214,25 @@ class PlanningGraphWindow(QMainWindow):
         self.inspector.show_edge(item.model)
         self.inspector.focus_title()
 
+    def _focus_group(self, group_id: str) -> None:
+        item = self.scene.group_items.get(group_id)
+        if item is None:
+            return
+        self.scene.clearSelection()
+        item.setSelected(True)
+        titles = [
+            self.scene.document.nodes[node_id].title
+            for node_id in item.model.node_ids
+            if node_id in self.scene.document.nodes
+        ]
+        self.inspector.show_group(item.model, titles)
+        self.inspector.focus_title()
+
     def _apply_node_changes(self, node_id: str, payload: dict) -> None:
         node = self.scene.document.nodes[node_id]
         title = str(payload["title"]).strip()
         if not title:
-            QMessageBox.warning(self, "Invalid node", "Node title must not be empty.")
+            QMessageBox.warning(self, "Invalid block", "Block title must not be empty.")
             return
         node.kind = str(payload["kind"])
         node.title = title
@@ -201,7 +244,7 @@ class PlanningGraphWindow(QMainWindow):
         self.scene.node_items[node_id].update()
         self.scene.document.touch()
         self._mark_dirty()
-        self.statusBar().showMessage(f"Updated node: {node.title}", 3000)
+        self.statusBar().showMessage(f"Updated block: {node.title}", 3000)
 
     def _apply_edge_changes(self, edge_id: str, payload: dict) -> None:
         edge = self.scene.document.edges[edge_id]
@@ -213,6 +256,31 @@ class PlanningGraphWindow(QMainWindow):
         self.scene.document.touch()
         self._mark_dirty()
         self.statusBar().showMessage(f"Updated connection: {edge.relation}", 3000)
+
+    def _apply_group_changes(self, group_id: str, payload: dict) -> None:
+        group = self.scene.document.groups[group_id]
+        title = str(payload["title"]).strip()
+        if not title:
+            QMessageBox.warning(self, "Invalid group", "Group title must not be empty.")
+            return
+        group.title = title
+        group.backdrop = bool(payload["backdrop"])
+        group.color = str(payload["color"])
+        group.layer = int(payload["layer"])
+        group.width = float(payload["width"])
+        group.height = float(payload["height"])
+        try:
+            group.__post_init__()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid group", str(exc))
+            return
+        item = self.scene.group_items[group_id]
+        item.set_scene_rect(group.x, group.y, group.width, group.height)
+        item.refresh_layer()
+        item.update()
+        self.scene.document.touch()
+        self._mark_dirty()
+        self.statusBar().showMessage(f"Updated group: {group.title}", 3000)
 
     def new_document(self) -> None:
         if not self._confirm_discard_changes():
