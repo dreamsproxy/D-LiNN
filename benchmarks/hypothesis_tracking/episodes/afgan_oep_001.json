@@ -1,0 +1,52 @@
+{
+  "episode_id": "afgan_oep_001",
+  "hypotheses": [
+    {
+      "hypothesis_id": "H1",
+      "text": "The OEP metric is not diagnostically meaningful by itself."
+    },
+    {
+      "hypothesis_id": "H2",
+      "text": "The rotation and flip assumptions inside OEP are inconsistent."
+    },
+    {
+      "hypothesis_id": "H3",
+      "text": "Mixed-batch regularizer interactions contribute to instability."
+    },
+    {
+      "hypothesis_id": "H4",
+      "text": "The generator architecture is the primary source of artifacts."
+    }
+  ],
+  "events": [
+    {
+      "step": 0,
+      "observation": "OEP remains stable near 1 while visible artifacts continue.",
+      "supports": {"H1": 1.0},
+      "weakens": {},
+      "context_id": "afgan_oep"
+    },
+    {
+      "step": 1,
+      "observation": "Disabling the RGB skip does not remove the artifacts.",
+      "supports": {"H1": 0.5, "H2": 0.5, "H3": 0.5},
+      "weakens": {"H4": 1.0},
+      "context_id": "afgan_oep"
+    },
+    {
+      "step": 2,
+      "observation": "The OEP transform stack does not compose flip and rotation together.",
+      "supports": {"H2": 1.5},
+      "weakens": {},
+      "context_id": "afgan_oep"
+    },
+    {
+      "step": 3,
+      "observation": "Removing rotations from OEP improves training behavior.",
+      "supports": {"H2": 1.5, "H3": 0.25},
+      "weakens": {"H4": 0.5},
+      "context_id": "afgan_oep"
+    }
+  ],
+  "expected_final_ranking": ["H2", "H1", "H3", "H4"]
+}
