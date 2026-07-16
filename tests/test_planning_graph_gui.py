@@ -55,6 +55,19 @@ class PlanningGraphGuiTests(unittest.TestCase):
             "New Idea",
         )
 
+    def test_live_block_dimensions_update_item_geometry(self) -> None:
+        node = self.scene.create_node("Idea", QPointF())
+        self.scene.update_node_properties(
+            node.node_id,
+            {"width": 275.0, "height": 225.0},
+        )
+        current = self.scene.document.nodes[node.node_id]
+        item = self.scene.node_items[node.node_id]
+        self.assertEqual(current.width, 300.0)
+        self.assertEqual(current.height, 250.0)
+        self.assertEqual(item.content_rect().width(), current.width)
+        self.assertEqual(item.content_rect().height(), current.height)
+
     def test_parallel_departures_receive_distinct_lanes(self) -> None:
         source = self.scene.create_node("Idea", QPointF(0.0, 0.0))
         first = self.scene.create_node("Task", QPointF(400.0, -150.0))
