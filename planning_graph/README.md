@@ -46,7 +46,8 @@ Use `python3`, not the Windows `py` launcher. On the current development system,
 - Status **None** uses the normal header color, producing no additional semantic emphasis.
 - Blocks and group frames resize in even grid-cell increments so centers, sides, and ports remain aligned.
 - Connections are colored by relationship type.
-- Automatic connections sharing a source direction use radial lane spacing.
+- Automatic connections sharing the same source block and departure side use stable radial lane spacing instead of occupying the same curve.
+- Arbitrary graph-wide crossing avoidance is not automatic; drag a connection to place a persistent manual route when a local layout needs further separation.
 - Group backdrops use low-alpha configurable colors and independent layers.
 - Every color selector shows the rendered color and its `#RRGGBB` code.
 
