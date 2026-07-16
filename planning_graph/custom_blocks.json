@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "block_types": [
+    {"name": "Idea", "color": "#70A7FF", "builtin": true},
+    {"name": "Goal", "color": "#63D297", "builtin": true},
+    {"name": "Question", "color": "#B58BFF", "builtin": true},
+    {"name": "Task", "color": "#F3C969", "builtin": true},
+    {"name": "Evidence", "color": "#58C8D4", "builtin": true},
+    {"name": "Decision", "color": "#FF956D", "builtin": true},
+    {"name": "Constraint", "color": "#FF7890", "builtin": true},
+    {"name": "Result", "color": "#93D36E", "builtin": true},
+    {"name": "Note", "color": "#AAB4BE", "builtin": true}
+  ],
+  "statuses": [
+    {"name": "None", "color": "#40556A", "builtin": true},
+    {"name": "Backlog", "color": "#94A3B2", "builtin": true},
+    {"name": "Active", "color": "#4A9EFF", "builtin": true},
+    {"name": "Blocked", "color": "#F06B6B", "builtin": true},
+    {"name": "Complete", "color": "#63D297", "builtin": true},
+    {"name": "Rejected", "color": "#A06A78", "builtin": true}
+  ]
+}
