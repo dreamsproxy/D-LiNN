@@ -15,6 +15,10 @@ NODE_WIDTH_CELLS = 10
 NODE_HEIGHT_CELLS = 6
 NODE_WIDTH = GRID_SIZE * NODE_WIDTH_CELLS
 NODE_HEIGHT = GRID_SIZE * NODE_HEIGHT_CELLS
+GROUP_MIN_WIDTH_CELLS = 4
+GROUP_MIN_HEIGHT_CELLS = 3
+GROUP_MIN_WIDTH = GRID_SIZE * GROUP_MIN_WIDTH_CELLS
+GROUP_MIN_HEIGHT = GRID_SIZE * GROUP_MIN_HEIGHT_CELLS
 
 
 def snap_value(value: float, grid_size: float = GRID_SIZE) -> float:
@@ -35,10 +39,38 @@ def snap_value(value: float, grid_size: float = GRID_SIZE) -> float:
     return snapped_units * float(grid_size)
 
 
+def snap_floor(value: float, grid_size: float = GRID_SIZE) -> float:
+    if grid_size <= 0.0:
+        raise ValueError("grid_size must be positive")
+    return math.floor(float(value) / grid_size) * grid_size
+
+
+def snap_ceil(value: float, grid_size: float = GRID_SIZE) -> float:
+    if grid_size <= 0.0:
+        raise ValueError("grid_size must be positive")
+    return math.ceil(float(value) / grid_size) * grid_size
+
+
 def snap_xy(x: float, y: float) -> tuple[float, float]:
     """Snap a two-dimensional position to the shared planning grid."""
 
     return snap_value(x), snap_value(y)
+
+
+def snap_rect_outward(
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+) -> tuple[float, float, float, float]:
+    """Expand a rectangle outward so every edge lies on the grid."""
+
+    return (
+        snap_floor(left),
+        snap_floor(top),
+        snap_ceil(right),
+        snap_ceil(bottom),
+    )
 
 
 def is_grid_aligned(value: float, grid_size: float = GRID_SIZE) -> bool:
