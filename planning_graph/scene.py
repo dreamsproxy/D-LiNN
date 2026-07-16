@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import math
+from typing import Any, Callable
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPolygonF
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QPolygonF, QUndoStack
 from PySide6.QtWidgets import (
     QColorDialog,
     QGraphicsPathItem,
@@ -16,7 +18,9 @@ from PySide6.QtWidgets import (
     QMenu,
 )
 
-from .grid import GRID_SIZE, snap_rect_outward, snap_xy
+from .definitions import DefinitionRegistry
+from .grid import GRID_SIZE, snap_rect_outward, snap_value, snap_xy
+from .history import DocumentStateCommand
 from .items import GraphEdgeItem, GraphGroupItem, GraphNodeItem
 from .models import (
     PlanningDocument,
@@ -30,6 +34,13 @@ from .theme import CANVAS_BACKGROUND, GRID_DOT, GROUP_COLOR_PRESETS, MUTED_TEXT
 
 MIME_NODE_KIND = "application/x-lisnn-planning-node-kind"
 GROUP_MARGIN = 2.0 * GRID_SIZE
+EDGE_LANE_SPACING = 38.0
+
+
+def _color_icon(color: str, size: int = 14) -> QIcon:
+    pixmap = QPixmap(size, size)
+    pixmap.fill(QColor(color))
+    return QIcon(pixmap)
 
 
 class PlanningScene(QGraphicsScene):
@@ -39,58 +50,142 @@ class PlanningScene(QGraphicsScene):
     edit_group_requested = Signal(str)
     status_message = Signal(str)
 
-    def __init__(self, document: PlanningDocument | None = None) -> None:
+    def __init__(
+        self,
+        registry: DefinitionRegistry,
+        document: PlanningDocument | None = None,
+    ) -> None:
         super().__init__(-5000.0, -5000.0, 10000.0, 10000.0)
+        self.registry = registry
         self.document = PlanningDocument() if document is None else document
+        self.undo_stack = QUndoStack(self)
         self.node_items: dict[str, GraphNodeItem] = {}
         self.edge_items: dict[str, GraphEdgeItem] = {}
         self.group_items: dict[str, GraphGroupItem] = {}
-        self.default_relation = "Related"
+        self.default_relation = "Leads To"
         self.connection_active = False
         self._connection_source: GraphNodeItem | None = None
         self._moving_group = False
+        self._restoring = False
         self._temp_edge = QGraphicsPathItem()
-        self._temp_edge.setPen(QPen(QColor(MUTED_TEXT), 2.0, Qt.PenStyle.DashLine))
-        self._temp_edge.setZValue(-2.0)
-        self.addItem(self._temp_edge)
-        self._temp_edge.hide()
+        self._configure_temp_edge()
         self.setBackgroundBrush(QColor(CANVAS_BACKGROUND))
         self.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.BspTreeIndex)
         self.load_document(self.document)
 
-    def load_document(self, document: PlanningDocument) -> None:
+    def _configure_temp_edge(self) -> None:
+        self._temp_edge.setPen(QPen(QColor(MUTED_TEXT), 2.0, Qt.PenStyle.DashLine))
+        self._temp_edge.setZValue(-2.0)
+        self.addItem(self._temp_edge)
+        self._temp_edge.hide()
+
+    def snapshot(self) -> dict[str, Any]:
+        return deepcopy(self.document.to_dict())
+
+    def restore_document_state(self, payload: dict[str, Any]) -> None:
+        self._restoring = True
+        try:
+            self.load_document(PlanningDocument.from_dict(deepcopy(payload)))
+        finally:
+            self._restoring = False
+        self.document_changed.emit()
+
+    def _mutate(
+        self,
+        text: str,
+        operation: Callable[[], Any],
+        *,
+        merge_key: str | None = None,
+    ) -> Any:
+        before = self.snapshot()
+        result = operation()
+        self.document.validate()
+        after = self.snapshot()
+        if before != after:
+            self.undo_stack.push(
+                DocumentStateCommand(
+                    self,
+                    before,
+                    after,
+                    text,
+                    merge_key=merge_key,
+                    already_applied=True,
+                )
+            )
+            self.document_changed.emit()
+        return result
+
+    def commit_external_change(
+        self,
+        text: str,
+        before: dict[str, Any],
+        *,
+        merge_key: str | None = None,
+    ) -> None:
+        self.document.validate()
+        after = self.snapshot()
+        if before == after:
+            return
+        self.undo_stack.push(
+            DocumentStateCommand(
+                self,
+                before,
+                after,
+                text,
+                merge_key=merge_key,
+                already_applied=True,
+            )
+        )
+        self.document_changed.emit()
+
+    def load_document(
+        self,
+        document: PlanningDocument,
+        *,
+        clear_history: bool = False,
+    ) -> None:
         self.clear()
         self.document = document
         self.node_items = {}
         self.edge_items = {}
         self.group_items = {}
         self._temp_edge = QGraphicsPathItem()
-        self._temp_edge.setPen(QPen(QColor(MUTED_TEXT), 2.0, Qt.PenStyle.DashLine))
-        self._temp_edge.setZValue(-2.0)
-        self.addItem(self._temp_edge)
-        self._temp_edge.hide()
-
+        self._configure_temp_edge()
         for group in document.groups.values():
             self._add_group_item(group)
         for node in document.nodes.values():
             self._add_node_item(node)
         for edge in document.edges.values():
             self._add_edge_item(edge)
+        self.refresh_edge_routes()
+        if clear_history:
+            self.undo_stack.clear()
 
-    def create_node(self, kind: str, pos: QPointF, title: str | None = None) -> PlanningNode:
-        x, y = snap_xy(pos.x(), pos.y())
-        node = PlanningNode.create(
-            kind=kind,
-            title=title or f"New {kind}",
-            x=x,
-            y=y,
-        )
-        self.document.add_node(node)
-        item = self._add_node_item(node)
-        self.clearSelection()
-        item.setSelected(True)
-        self.document_changed.emit()
-        return node
+    def create_node(
+        self,
+        kind: str,
+        pos: QPointF,
+        title: str | None = None,
+    ) -> PlanningNode:
+        holder: dict[str, PlanningNode] = {}
+
+        def operation() -> None:
+            x, y = snap_xy(pos.x(), pos.y())
+            node = PlanningNode.create(
+                kind=kind,
+                title=title or f"New {kind}",
+                status="None",
+                x=x,
+                y=y,
+            )
+            self.document.add_node(node)
+            item = self._add_node_item(node)
+            self.clearSelection()
+            item.setSelected(True)
+            holder["node"] = node
+
+        self._mutate("Create block", operation)
+        return holder["node"]
 
     def create_edge(
         self,
@@ -98,20 +193,26 @@ class PlanningScene(QGraphicsScene):
         target_id: str,
         relation: str | None = None,
     ) -> PlanningEdge:
-        edge = PlanningEdge.create(
-            source_id=source_id,
-            target_id=target_id,
-            relation=relation or self.default_relation,
-        )
-        self.document.add_edge(edge)
-        item = self._add_edge_item(edge)
-        self.clearSelection()
-        item.setSelected(True)
-        self.document_changed.emit()
-        return edge
+        holder: dict[str, PlanningEdge] = {}
+
+        def operation() -> None:
+            edge = PlanningEdge.create(
+                source_id=source_id,
+                target_id=target_id,
+                relation=relation or self.default_relation,
+            )
+            self.document.add_edge(edge)
+            item = self._add_edge_item(edge)
+            self.clearSelection()
+            item.setSelected(True)
+            self.refresh_edge_routes()
+            holder["edge"] = edge
+
+        self._mutate("Create connection", operation)
+        return holder["edge"]
 
     def _add_node_item(self, node: PlanningNode) -> GraphNodeItem:
-        item = GraphNodeItem(node)
+        item = GraphNodeItem(node, self.registry)
         self.node_items[node.node_id] = item
         self.addItem(item)
         return item
@@ -132,6 +233,11 @@ class PlanningScene(QGraphicsScene):
         self.addItem(item)
         return item
 
+    def refresh_registry(self) -> None:
+        for item in self.node_items.values():
+            item.registry = self.registry
+            item.update()
+
     def request_edit_node(self, node_id: str) -> None:
         self.edit_node_requested.emit(node_id)
 
@@ -141,17 +247,26 @@ class PlanningScene(QGraphicsScene):
     def request_edit_group(self, group_id: str) -> None:
         self.edit_group_requested.emit(group_id)
 
-    def node_moved(self, node_id: str) -> None:
+    def node_geometry_live(self, node_id: str) -> None:
         for edge_item in self.edge_items.values():
             if node_id in (edge_item.model.source_id, edge_item.model.target_id):
                 edge_item.update_geometry()
+        self.refresh_edge_routes()
         self.document.touch()
-        self.document_changed.emit()
+        if not self._restoring:
+            self.document_changed.emit()
 
-    def group_geometry_changed(self, group_id: str) -> None:
+    def group_geometry_live(self, group_id: str) -> None:
         if group_id in self.document.groups:
             self.document.touch()
-            self.document_changed.emit()
+            if not self._restoring:
+                self.document_changed.emit()
+
+    def edge_geometry_live(self, edge_id: str) -> None:
+        if edge_id in self.document.edges:
+            self.document.touch()
+            if not self._restoring:
+                self.document_changed.emit()
 
     def move_group_nodes(self, group_id: str, dx: float, dy: float) -> None:
         group = self.document.groups.get(group_id)
@@ -165,39 +280,121 @@ class PlanningScene(QGraphicsScene):
                     item.setPos(item.pos().x() + dx, item.pos().y() + dy)
         finally:
             self._moving_group = False
+        self.refresh_edge_routes()
         self.document.touch()
-        self.document_changed.emit()
+
+    def refresh_edge_routes(self) -> None:
+        buckets: dict[tuple[str, str], list[GraphEdgeItem]] = {}
+        for edge_item in self.edge_items.values():
+            side = edge_item.source.best_port_name(edge_item.target.scenePos())
+            buckets.setdefault((edge_item.model.source_id, side), []).append(edge_item)
+        for items in buckets.values():
+            ordered = sorted(items, key=lambda item: item.model.edge_id)
+            center = (len(ordered) - 1) / 2.0
+            for index, item in enumerate(ordered):
+                item.set_lane_offset((index - center) * EDGE_LANE_SPACING)
+
+    def update_node_properties(self, node_id: str, payload: dict[str, Any]) -> None:
+        def operation() -> None:
+            node = self.document.nodes[node_id]
+            node.kind = str(payload.get("kind", node.kind)).strip() or node.kind
+            node.title = str(payload.get("title", node.title)).strip() or "Untitled"
+            node.body = str(payload.get("body", node.body))
+            node.status = str(payload.get("status", node.status)).strip() or "None"
+            node.priority = int(payload.get("priority", node.priority))
+            node.tags = list(payload.get("tags", node.tags))
+            node.width = float(payload.get("width", node.width))
+            node.height = float(payload.get("height", node.height))
+            node.header_font_size = int(payload.get("header_font_size", node.header_font_size))
+            node.title_font_size = int(payload.get("title_font_size", node.title_font_size))
+            node.body_font_size = int(payload.get("body_font_size", node.body_font_size))
+            node.footer_font_size = int(payload.get("footer_font_size", node.footer_font_size))
+            node.__post_init__()
+            item = self.node_items[node_id]
+            item.prepareGeometryChange()
+            item.update()
+            self.node_geometry_live(node_id)
+
+        self._mutate(
+            "Edit block",
+            operation,
+            merge_key=f"node-properties:{node_id}",
+        )
+
+    def update_edge_properties(self, edge_id: str, payload: dict[str, Any]) -> None:
+        def operation() -> None:
+            edge = self.document.edges[edge_id]
+            edge.relation = str(payload.get("relation", edge.relation))
+            edge.label = str(payload.get("label", edge.label))
+            edge.weight = float(payload.get("weight", edge.weight))
+            edge.__post_init__()
+            self.edge_items[edge_id].update_geometry()
+
+        self._mutate(
+            "Edit connection",
+            operation,
+            merge_key=f"edge-properties:{edge_id}",
+        )
+
+    def update_group_properties(self, group_id: str, payload: dict[str, Any]) -> None:
+        def operation() -> None:
+            group = self.document.groups[group_id]
+            group.title = str(payload.get("title", group.title)).strip() or "Group"
+            group.backdrop = bool(payload.get("backdrop", group.backdrop))
+            group.color = normalize_hex_color(payload.get("color", group.color))
+            group.layer = int(payload.get("layer", group.layer))
+            width = float(payload.get("width", group.width))
+            height = float(payload.get("height", group.height))
+            group.__post_init__()
+            item = self.group_items[group_id]
+            item.set_scene_rect(group.x, group.y, width, height)
+            item.refresh_layer()
+            item.update()
+
+        self._mutate(
+            "Edit group",
+            operation,
+            merge_key=f"group-properties:{group_id}",
+        )
 
     def delete_selected(self) -> None:
         selected = list(self.selectedItems())
-        group_ids = [
-            item.model.group_id for item in selected if isinstance(item, GraphGroupItem)
-        ]
-        edge_ids = [item.model.edge_id for item in selected if isinstance(item, GraphEdgeItem)]
-        node_ids = [item.model.node_id for item in selected if isinstance(item, GraphNodeItem)]
+        if not selected:
+            return
 
-        for group_id in group_ids:
-            self.remove_group(group_id)
-        for edge_id in edge_ids:
-            self.remove_edge(edge_id)
-        for node_id in node_ids:
-            self.remove_node(node_id)
-        if group_ids or edge_ids or node_ids:
-            self.document_changed.emit()
+        def operation() -> None:
+            group_ids = [
+                item.model.group_id for item in selected if isinstance(item, GraphGroupItem)
+            ]
+            edge_ids = [
+                item.model.edge_id for item in selected if isinstance(item, GraphEdgeItem)
+            ]
+            node_ids = [
+                item.model.node_id for item in selected if isinstance(item, GraphNodeItem)
+            ]
+            for group_id in group_ids:
+                self._remove_group_now(group_id)
+            for edge_id in edge_ids:
+                self._remove_edge_now(edge_id)
+            for node_id in node_ids:
+                self._remove_node_now(node_id)
+            self.refresh_edge_routes()
 
-    def remove_edge(self, edge_id: str) -> None:
+        self._mutate("Delete selection", operation)
+
+    def _remove_edge_now(self, edge_id: str) -> None:
         item = self.edge_items.pop(edge_id, None)
         if item is not None:
             self.removeItem(item)
         self.document.remove_edge(edge_id)
 
-    def remove_group(self, group_id: str) -> None:
+    def _remove_group_now(self, group_id: str) -> None:
         item = self.group_items.pop(group_id, None)
         if item is not None:
             self.removeItem(item)
         self.document.remove_group(group_id)
 
-    def remove_node(self, node_id: str) -> None:
+    def _remove_node_now(self, node_id: str) -> None:
         groups_before = set(self.document.groups)
         removed_edges = self.document.remove_node(node_id)
         for edge_id in removed_edges:
@@ -207,40 +404,57 @@ class PlanningScene(QGraphicsScene):
         item = self.node_items.pop(node_id, None)
         if item is not None:
             self.removeItem(item)
-
         removed_groups = groups_before.difference(self.document.groups)
         for group_id in removed_groups:
             group_item = self.group_items.pop(group_id, None)
             if group_item is not None:
                 self.removeItem(group_item)
-        for group_id, group_item in self.group_items.items():
-            if group_id in self.document.groups:
-                group_item.update()
+        for group_item in self.group_items.values():
+            group_item.update()
+
+    def delete_group_and_blocks(self, group_id: str) -> None:
+        group = self.document.groups.get(group_id)
+        if group is None:
+            return
+
+        def operation() -> None:
+            for node_id in list(group.node_ids):
+                self._remove_node_now(node_id)
+            if group_id in self.group_items:
+                self._remove_group_now(group_id)
+            self.refresh_edge_routes()
+
+        self._mutate("Delete group and blocks", operation)
 
     def duplicate_selected_node(self) -> None:
         selected = [item for item in self.selectedItems() if isinstance(item, GraphNodeItem)]
         if len(selected) != 1:
             return
         source = selected[0].model
-        x, y = snap_xy(
-            source.x + 2.0 * GRID_SIZE,
-            source.y + 2.0 * GRID_SIZE,
-        )
-        node = PlanningNode.create(
-            kind=source.kind,
-            title=f"{source.title} (copy)",
-            body=source.body,
-            status=source.status,
-            priority=source.priority,
-            tags=source.tags.copy(),
-            x=x,
-            y=y,
-        )
-        self.document.add_node(node)
-        item = self._add_node_item(node)
-        self.clearSelection()
-        item.setSelected(True)
-        self.document_changed.emit()
+
+        def operation() -> None:
+            node = PlanningNode.create(
+                kind=source.kind,
+                title=f"{source.title} (copy)",
+                body=source.body,
+                status=source.status,
+                priority=source.priority,
+                tags=source.tags.copy(),
+                x=source.x + 2.0 * GRID_SIZE,
+                y=source.y + 2.0 * GRID_SIZE,
+                width=source.width,
+                height=source.height,
+                header_font_size=source.header_font_size,
+                title_font_size=source.title_font_size,
+                body_font_size=source.body_font_size,
+                footer_font_size=source.footer_font_size,
+            )
+            self.document.add_node(node)
+            item = self._add_node_item(node)
+            self.clearSelection()
+            item.setSelected(True)
+
+        self._mutate("Duplicate block", operation)
 
     def selected_node_items(self) -> list[GraphNodeItem]:
         return [item for item in self.selectedItems() if isinstance(item, GraphNodeItem)]
@@ -259,54 +473,49 @@ class PlanningScene(QGraphicsScene):
         if len(nodes) < 2:
             self.status_message.emit("Select at least two blocks before grouping.")
             return None
-        occupied = [
-            item.model.title
-            for item in nodes
-            if self.document.group_for_node(item.model.node_id) is not None
-        ]
-        if occupied:
-            self.status_message.emit(
-                "Ungroup existing members before regrouping: " + ", ".join(occupied)
-            )
+        if not self.can_group_selection():
+            self.status_message.emit("Ungroup existing members before regrouping them.")
             return None
+        holder: dict[str, PlanningGroup] = {}
 
-        bounds = nodes[0].sceneBoundingRect()
-        for item in nodes[1:]:
-            bounds = bounds.united(item.sceneBoundingRect())
-        left, top, right, bottom = snap_rect_outward(
-            bounds.left() - GROUP_MARGIN,
-            bounds.top() - GROUP_MARGIN,
-            bounds.right() + GROUP_MARGIN,
-            bounds.bottom() + GROUP_MARGIN,
-        )
-        layer = max((group.layer for group in self.document.groups.values()), default=-1) + 1
-        color = GROUP_COLOR_PRESETS[len(self.document.groups) % len(GROUP_COLOR_PRESETS)]
-        group = PlanningGroup.create(
-            title=f"Group {len(self.document.groups) + 1}",
-            node_ids=[item.model.node_id for item in nodes],
-            x=left,
-            y=top,
-            width=right - left,
-            height=bottom - top,
-            backdrop=True,
-            color=color,
-            layer=layer,
-        )
-        self.document.add_group(group)
-        group_item = self._add_group_item(group)
-        self.clearSelection()
-        group_item.setSelected(True)
-        self.document_changed.emit()
+        def operation() -> None:
+            bounds = nodes[0].sceneBoundingRect()
+            for item in nodes[1:]:
+                bounds = bounds.united(item.sceneBoundingRect())
+            left, top, right, bottom = snap_rect_outward(
+                bounds.left() - GROUP_MARGIN,
+                bounds.top() - GROUP_MARGIN,
+                bounds.right() + GROUP_MARGIN,
+                bounds.bottom() + GROUP_MARGIN,
+            )
+            layer = max((group.layer for group in self.document.groups.values()), default=-1) + 1
+            color = GROUP_COLOR_PRESETS[len(self.document.groups) % len(GROUP_COLOR_PRESETS)]
+            group = PlanningGroup.create(
+                title=f"Group {len(self.document.groups) + 1}",
+                node_ids=[item.model.node_id for item in nodes],
+                x=left,
+                y=top,
+                width=right - left,
+                height=bottom - top,
+                backdrop=True,
+                color=color,
+                layer=layer,
+            )
+            self.document.add_group(group)
+            group_item = self._add_group_item(group)
+            self.clearSelection()
+            group_item.setSelected(True)
+            holder["group"] = group
+
+        self._mutate("Group blocks", operation)
+        group = holder["group"]
         self.status_message.emit(f"Created {group.title} with {len(group.node_ids)} blocks.")
         return group
 
-    def ungroup_selected(self) -> None:
-        group_ids = [item.model.group_id for item in self.selected_group_items()]
-        for group_id in group_ids:
-            self.remove_group(group_id)
-        if group_ids:
-            self.document_changed.emit()
-            self.status_message.emit(f"Ungrouped {len(group_ids)} group(s).")
+    def ungroup(self, group_id: str) -> None:
+        if group_id not in self.document.groups:
+            return
+        self._mutate("Ungroup blocks", lambda: self._remove_group_now(group_id))
 
     def invert_selection(self) -> None:
         selectable = [
@@ -318,45 +527,38 @@ class PlanningScene(QGraphicsScene):
         for item, selected in states.items():
             item.setSelected(not selected)
 
+    def select_group_members(self, group_id: str) -> None:
+        group = self.document.groups.get(group_id)
+        if group is None:
+            return
+        self.clearSelection()
+        for node_id in group.node_ids:
+            item = self.node_items.get(node_id)
+            if item is not None:
+                item.setSelected(True)
+
     def toggle_group_backdrop(self, group_id: str) -> None:
         group = self.document.groups.get(group_id)
         if group is None:
             return
-        group.backdrop = not group.backdrop
-        self.group_items[group_id].update()
-        self.document.touch()
-        self.document_changed.emit()
+        self.update_group_properties(group_id, {"backdrop": not group.backdrop})
 
     def set_group_color(self, group_id: str, color: str) -> None:
-        group = self.document.groups.get(group_id)
-        if group is None:
-            return
-        group.color = normalize_hex_color(color)
-        self.group_items[group_id].update()
-        self.document.touch()
-        self.document_changed.emit()
+        self.update_group_properties(group_id, {"color": color})
 
     def set_group_layer(self, group_id: str, layer: int) -> None:
-        group = self.document.groups.get(group_id)
-        if group is None:
+        self.update_group_properties(group_id, {"layer": layer})
+
+    def reset_edge_route(self, edge_id: str) -> None:
+        edge = self.document.edges.get(edge_id)
+        if edge is None or not edge.has_manual_route:
             return
-        group.layer = int(layer)
-        self.group_items[group_id].refresh_layer()
-        self.document.touch()
-        self.document_changed.emit()
 
-    def bring_group_to_front(self, group_id: str) -> None:
-        layer = max((group.layer for group in self.document.groups.values()), default=0) + 1
-        self.set_group_layer(group_id, layer)
+        def operation() -> None:
+            edge.clear_route()
+            self.refresh_edge_routes()
 
-    def send_group_to_back(self, group_id: str) -> None:
-        layer = min((group.layer for group in self.document.groups.values()), default=0) - 1
-        self.set_group_layer(group_id, layer)
-
-    def move_group_layer(self, group_id: str, delta: int) -> None:
-        group = self.document.groups.get(group_id)
-        if group is not None:
-            self.set_group_layer(group_id, group.layer + int(delta))
+        self._mutate("Reset connection route", operation)
 
     def start_connection(self, source: GraphNodeItem, start: QPointF) -> None:
         self.connection_active = True
@@ -369,8 +571,8 @@ class PlanningScene(QGraphicsScene):
             return
         start = self._connection_source.best_port_scene(end)
         path = QPainterPath(start)
-        midpoint = (start.x() + end.x()) / 2.0
-        path.cubicTo(QPointF(midpoint, start.y()), QPointF(midpoint, end.y()), end)
+        midpoint = QPointF((start.x() + end.x()) / 2.0, (start.y() + end.y()) / 2.0)
+        path.quadTo(midpoint, end)
         self._temp_edge.setPath(path)
 
     def finish_connection(self, end: QPointF) -> None:
@@ -381,15 +583,12 @@ class PlanningScene(QGraphicsScene):
         self._temp_edge.setPath(QPainterPath())
         if source is None:
             return
-
-        target = None
-        for item in self.items(end):
-            if isinstance(item, GraphNodeItem):
-                target = item
-                break
-        if target is None or target is source:
-            return
-        self.create_edge(source.model.node_id, target.model.node_id)
+        target = next(
+            (item for item in self.items(end) if isinstance(item, GraphNodeItem)),
+            None,
+        )
+        if target is not None and target is not source:
+            self.create_edge(source.model.node_id, target.model.node_id)
 
     def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent) -> None:
         clicked = next(
@@ -412,29 +611,37 @@ class PlanningScene(QGraphicsScene):
         invert_action = menu.addAction("Invert Selection")
 
         group_item = clicked if isinstance(clicked, GraphGroupItem) else None
+        edge_item = clicked if isinstance(clicked, GraphEdgeItem) else None
         color_actions: dict[object, str] = {}
         if group_item is not None:
             menu.addSeparator()
+            select_members_action = menu.addAction("Select Group Members")
             ungroup_action = menu.addAction("Ungroup")
-            backdrop_text = "Remove Backdrop" if group_item.model.backdrop else "Add Backdrop"
-            backdrop_action = menu.addAction(backdrop_text)
-
+            delete_group_action = menu.addAction("Delete Group and Blocks")
+            backdrop_action = menu.addAction(
+                "Remove Backdrop" if group_item.model.backdrop else "Add Backdrop"
+            )
             color_menu = menu.addMenu("Backdrop Color")
             for color in GROUP_COLOR_PRESETS:
-                action = color_menu.addAction(color)
+                action = color_menu.addAction(_color_icon(color), color)
                 color_actions[action] = color
             custom_color_action = color_menu.addAction("Custom...")
-
             layer_menu = menu.addMenu("Layer")
             front_action = layer_menu.addAction("Bring to Front")
             forward_action = layer_menu.addAction("Bring Forward")
             backward_action = layer_menu.addAction("Send Backward")
             back_action = layer_menu.addAction("Send to Back")
         else:
-            ungroup_action = None
-            backdrop_action = None
-            custom_color_action = None
+            select_members_action = ungroup_action = delete_group_action = None
+            backdrop_action = custom_color_action = None
             front_action = forward_action = backward_action = back_action = None
+
+        if edge_item is not None:
+            menu.addSeparator()
+            reset_route_action = menu.addAction("Reset Automatic Route")
+            reset_route_action.setEnabled(edge_item.model.has_manual_route)
+        else:
+            reset_route_action = None
 
         chosen = menu.exec(event.screenPos())
         if chosen is None:
@@ -445,9 +652,12 @@ class PlanningScene(QGraphicsScene):
             self.group_selected_nodes()
         elif chosen is invert_action:
             self.invert_selection()
+        elif chosen is select_members_action and group_item is not None:
+            self.select_group_members(group_item.model.group_id)
         elif chosen is ungroup_action and group_item is not None:
-            self.remove_group(group_item.model.group_id)
-            self.document_changed.emit()
+            self.ungroup(group_item.model.group_id)
+        elif chosen is delete_group_action and group_item is not None:
+            self.delete_group_and_blocks(group_item.model.group_id)
         elif chosen is backdrop_action and group_item is not None:
             self.toggle_group_backdrop(group_item.model.group_id)
         elif chosen in color_actions and group_item is not None:
@@ -458,13 +668,21 @@ class PlanningScene(QGraphicsScene):
             if color.isValid():
                 self.set_group_color(group_item.model.group_id, color.name())
         elif chosen is front_action and group_item is not None:
-            self.bring_group_to_front(group_item.model.group_id)
+            self.set_group_layer(
+                group_item.model.group_id,
+                max((group.layer for group in self.document.groups.values()), default=0) + 1,
+            )
         elif chosen is forward_action and group_item is not None:
-            self.move_group_layer(group_item.model.group_id, 1)
+            self.set_group_layer(group_item.model.group_id, group_item.model.layer + 1)
         elif chosen is backward_action and group_item is not None:
-            self.move_group_layer(group_item.model.group_id, -1)
+            self.set_group_layer(group_item.model.group_id, group_item.model.layer - 1)
         elif chosen is back_action and group_item is not None:
-            self.send_group_to_back(group_item.model.group_id)
+            self.set_group_layer(
+                group_item.model.group_id,
+                min((group.layer for group in self.document.groups.values()), default=0) - 1,
+            )
+        elif chosen is reset_route_action and edge_item is not None:
+            self.reset_edge_route(edge_item.model.edge_id)
 
     def dragEnterEvent(self, event: QGraphicsSceneDragDropEvent) -> None:
         if event.mimeData().hasFormat(MIME_NODE_KIND):
@@ -488,11 +706,9 @@ class PlanningScene(QGraphicsScene):
 
     def drawBackground(self, painter: QPainter, rect: QRectF) -> None:
         super().drawBackground(painter, rect)
-
         left = math.floor(rect.left() / GRID_SIZE) * GRID_SIZE
         top = math.floor(rect.top() / GRID_SIZE) * GRID_SIZE
         points = QPolygonF()
-
         x = left
         while x <= rect.right():
             y = top
@@ -500,7 +716,6 @@ class PlanningScene(QGraphicsScene):
                 points.append(QPointF(x, y))
                 y += GRID_SIZE
             x += GRID_SIZE
-
         dot_pen = QPen(QColor(*GRID_DOT))
         dot_pen.setWidthF(2.0)
         dot_pen.setCosmetic(True)
@@ -523,10 +738,12 @@ class PlanningView(QGraphicsView):
         self._panning = False
         self._pan_start = QPoint()
 
+    def visible_scene_center(self) -> QPointF:
+        return self.mapToScene(self.viewport().rect().center())
+
     def wheelEvent(self, event) -> None:
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
-        current = self.transform().m11()
-        target = current * factor
+        target = self.transform().m11() * factor
         if 0.15 <= target <= 4.5:
             self.scale(factor, factor)
 
