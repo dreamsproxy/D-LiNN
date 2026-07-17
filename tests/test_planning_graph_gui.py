@@ -13,15 +13,24 @@ from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QApplication
 
 from planning_graph.definitions import DefinitionRegistry
+from planning_graph.performance import (
+    configure_runtime,
+    detail_tier,
+    grid_step_for_lod,
+    install_runtime_patches,
+)
 from planning_graph.scene import PlanningScene
 from planning_graph.window import PlanningGraphWindow
 
 
+configure_runtime(software_rendering=True, performance_mode=False)
+install_runtime_patches()
 _APP = QApplication.instance() or QApplication([])
 
 
 class PlanningGraphGuiTests(unittest.TestCase):
     def setUp(self) -> None:
+        configure_runtime(software_rendering=True, performance_mode=False)
         self.temporary_directory = tempfile.TemporaryDirectory()
         path = Path(self.temporary_directory.name) / "custom_blocks.json"
         self.registry = DefinitionRegistry.defaults(path)
@@ -91,14 +100,35 @@ class PlanningGraphGuiTests(unittest.TestCase):
         self.scene.edge_items[edge.edge_id].update_geometry()
         self.assertTrue(edge.has_manual_route)
         self.scene.reset_edge_route(edge.edge_id)
-        self.assertFalse(self.scene.document.edges[edge.edge_id].has_manual_route)
+        self.assertFalse(
+            self.scene.document.edges[edge.edge_id].has_manual_route
+        )
 
-    def test_window_constructs_with_dark_alpha_components(self) -> None:
+    def test_balanced_lod_tiers_are_progressive(self) -> None:
+        self.assertEqual(detail_tier(0.80), "full")
+        self.assertEqual(detail_tier(0.50), "compact")
+        self.assertEqual(detail_tier(0.30), "title")
+        self.assertEqual(detail_tier(0.10), "silhouette")
+
+    def test_grid_density_adapts_and_disappears_at_overview(self) -> None:
+        self.assertEqual(grid_step_for_lod(1.00), 25.0)
+        self.assertEqual(grid_step_for_lod(0.50), 100.0)
+        self.assertEqual(grid_step_for_lod(0.30), 250.0)
+        self.assertIsNone(grid_step_for_lod(0.10))
+
+    def test_window_constructs_with_renderer_controls(self) -> None:
         window = PlanningGraphWindow()
         try:
             self.assertEqual(window.scene.default_relation, "Leads To")
             self.assertEqual(window.relation_combo.currentText(), "Leads To")
             self.assertGreater(window.palette.count(), 0)
+            self.assertEqual(window.view.renderer_backend, "Software Raster")
+            self.assertIn("Renderer: Software Raster", window.renderer_status_label.text())
+            self.assertFalse(window.performance_action.isChecked())
+            window.performance_action.setChecked(True)
+            self.assertIn("LOD: Performance", window.renderer_status_label.text())
+            window.performance_action.setChecked(False)
+            self.assertIn("LOD: Balanced", window.renderer_status_label.text())
         finally:
             window.close()
 
