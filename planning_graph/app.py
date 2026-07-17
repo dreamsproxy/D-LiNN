@@ -8,7 +8,7 @@ from collections.abc import Sequence
 
 from PySide6.QtWidgets import QApplication
 
-from .performance import configure_runtime, install_runtime_patches
+from .rendering import configure_runtime, install_runtime_patches
 from .theme import apply_dark_theme
 
 
