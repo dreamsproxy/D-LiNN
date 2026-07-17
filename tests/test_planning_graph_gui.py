@@ -9,7 +9,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QPoint, QPointF
 from PySide6.QtWidgets import QApplication
 
 from planning_graph.definitions import DefinitionRegistry
@@ -115,6 +115,40 @@ class PlanningGraphGuiTests(unittest.TestCase):
         self.assertEqual(grid_step_for_lod(0.50), 100.0)
         self.assertEqual(grid_step_for_lod(0.30), 250.0)
         self.assertIsNone(grid_step_for_lod(0.10))
+
+    def test_zoom_recovers_from_scale_below_old_floor(self) -> None:
+        window = PlanningGraphWindow()
+        try:
+            view = window.view
+            view.resetTransform()
+            view.scale(0.05, 0.05)
+            before = view.current_zoom()
+            after = view.zoom_by(1.15)
+            self.assertAlmostEqual(before, 0.05, places=6)
+            self.assertAlmostEqual(after, 0.0575, places=6)
+            self.assertGreater(after, before)
+            self.assertLess(after, 0.15)
+        finally:
+            window.close()
+
+    def test_pan_by_pixels_changes_visible_scene_center(self) -> None:
+        window = PlanningGraphWindow()
+        try:
+            window.show()
+            _APP.processEvents()
+            view = window.view
+            view.resetTransform()
+            view.zoom_to(1.0)
+            view.centerOn(0.0, 0.0)
+            _APP.processEvents()
+            before = view.visible_scene_center()
+            view.pan_by_pixels(QPoint(120, 80))
+            _APP.processEvents()
+            after = view.visible_scene_center()
+            self.assertLess(after.x(), before.x())
+            self.assertLess(after.y(), before.y())
+        finally:
+            window.close()
 
     def test_window_constructs_with_renderer_controls(self) -> None:
         window = PlanningGraphWindow()
