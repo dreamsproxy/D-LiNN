@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -102,98 +103,104 @@ def _create_schema(connection: sqlite3.Connection) -> None:
 
 
 def _save_sqlite(document: PlanningDocument, destination: Path) -> Path:
-    with _connect(destination) as connection:
-        _create_schema(connection)
-        connection.executescript(
-            """
-            DELETE FROM group_nodes;
-            DELETE FROM edges;
-            DELETE FROM groups_table;
-            DELETE FROM nodes;
-            DELETE FROM metadata;
-            """
-        )
-        metadata = {
-            "version": str(document.version),
-            "title": document.title,
-            "created_at": document.created_at,
-            "updated_at": document.updated_at,
-        }
-        connection.executemany(
-            "INSERT INTO metadata(key, value) VALUES (?, ?)",
-            metadata.items(),
-        )
-        connection.executemany(
-            """
-            INSERT INTO nodes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    node.node_id,
-                    node.kind,
-                    node.title,
-                    node.body,
-                    node.status,
-                    node.priority,
-                    json.dumps(node.tags, ensure_ascii=False),
-                    node.x,
-                    node.y,
-                    node.width,
-                    node.height,
-                    node.header_font_size,
-                    node.title_font_size,
-                    node.body_font_size,
-                    node.footer_font_size,
-                )
-                for node in document.nodes.values()
-            ],
-        )
-        connection.executemany(
-            "INSERT INTO edges VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                (
-                    edge.edge_id,
-                    edge.source_id,
-                    edge.target_id,
-                    edge.relation,
-                    edge.label,
-                    edge.weight,
-                    edge.route_x,
-                    edge.route_y,
-                )
-                for edge in document.edges.values()
-            ],
-        )
-        connection.executemany(
-            "INSERT INTO groups_table VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                (
-                    group.group_id,
-                    group.title,
-                    int(group.backdrop),
-                    group.color,
-                    group.x,
-                    group.y,
-                    group.width,
-                    group.height,
-                    group.layer,
-                )
-                for group in document.groups.values()
-            ],
-        )
-        connection.executemany(
-            "INSERT INTO group_nodes VALUES (?, ?, ?)",
-            [
-                (group.group_id, node_id, index)
-                for group in document.groups.values()
-                for index, node_id in enumerate(group.node_ids)
-            ],
-        )
+    # sqlite3.Connection.__enter__ manages commit/rollback but deliberately does
+    # not close the connection. Use closing() as the outer lifetime boundary so
+    # Windows releases the database file before this function returns.
+    with closing(_connect(destination)) as connection:
+        with connection:
+            _create_schema(connection)
+            connection.executescript(
+                """
+                DELETE FROM group_nodes;
+                DELETE FROM edges;
+                DELETE FROM groups_table;
+                DELETE FROM nodes;
+                DELETE FROM metadata;
+                """
+            )
+            metadata = {
+                "version": str(document.version),
+                "title": document.title,
+                "created_at": document.created_at,
+                "updated_at": document.updated_at,
+            }
+            connection.executemany(
+                "INSERT INTO metadata(key, value) VALUES (?, ?)",
+                metadata.items(),
+            )
+            connection.executemany(
+                """
+                INSERT INTO nodes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        node.node_id,
+                        node.kind,
+                        node.title,
+                        node.body,
+                        node.status,
+                        node.priority,
+                        json.dumps(node.tags, ensure_ascii=False),
+                        node.x,
+                        node.y,
+                        node.width,
+                        node.height,
+                        node.header_font_size,
+                        node.title_font_size,
+                        node.body_font_size,
+                        node.footer_font_size,
+                    )
+                    for node in document.nodes.values()
+                ],
+            )
+            connection.executemany(
+                "INSERT INTO edges VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        edge.edge_id,
+                        edge.source_id,
+                        edge.target_id,
+                        edge.relation,
+                        edge.label,
+                        edge.weight,
+                        edge.route_x,
+                        edge.route_y,
+                    )
+                    for edge in document.edges.values()
+                ],
+            )
+            connection.executemany(
+                "INSERT INTO groups_table VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        group.group_id,
+                        group.title,
+                        int(group.backdrop),
+                        group.color,
+                        group.x,
+                        group.y,
+                        group.width,
+                        group.height,
+                        group.layer,
+                    )
+                    for group in document.groups.values()
+                ],
+            )
+            connection.executemany(
+                "INSERT INTO group_nodes VALUES (?, ?, ?)",
+                [
+                    (group.group_id, node_id, index)
+                    for group in document.groups.values()
+                    for index, node_id in enumerate(group.node_ids)
+                ],
+            )
     return destination
 
 
 def _load_sqlite(source: Path) -> PlanningDocument:
-    with _connect(source) as connection:
+    # Explicitly close before returning. This is required on Windows, where an
+    # open SQLite handle prevents TemporaryDirectory cleanup and file replacement.
+    with closing(_connect(source)) as connection:
         _create_schema(connection)
         metadata = dict(connection.execute("SELECT key, value FROM metadata"))
         nodes = {
@@ -266,6 +273,7 @@ def _load_sqlite(source: Path) -> PlanningDocument:
                 """
             )
         }
+
     if not metadata:
         raise ValueError("SQLite file does not contain a planning graph document")
     return PlanningDocument(
