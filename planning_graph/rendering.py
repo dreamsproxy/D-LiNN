@@ -1,13 +1,15 @@
 """Public runtime facade for the planning graph rendering layer.
 
 Qt platform plugins differ in how long borrowed native-menu wrappers remain
-valid.  This module installs the renderer while giving the performance toggle
+valid. This module installs the renderer while giving the performance toggle
 its own Python-owned menu, avoiding transient QMenu wrappers on offscreen and
-native-menu platforms.
+native-menu platforms. Navigation is installed separately so zoom and pan
+behavior remain identical under OpenGL and software raster rendering.
 """
 
 from __future__ import annotations
 
+from . import navigation as _navigation
 from . import performance as _performance
 
 RenderProfile = _performance.RenderProfile
@@ -24,7 +26,7 @@ _INSTALLED = False
 
 
 def install_runtime_patches() -> None:
-    """Install renderer patches and attach a persistent Rendering menu."""
+    """Install renderer, navigation, and a persistent Rendering menu."""
 
     global _INSTALLED
     if _INSTALLED:
@@ -36,6 +38,11 @@ def install_runtime_patches() -> None:
     # status indicator without touching a borrowed menu.
     _performance._find_menu = lambda window, title: None
     _performance.install_runtime_patches()
+
+    # Install after the renderer so the navigation initializer wraps the final
+    # OpenGL/software viewport initializer. Event handling itself remains
+    # backend-independent.
+    _navigation.install_navigation_patches()
 
     from .window import PlanningGraphWindow
 
