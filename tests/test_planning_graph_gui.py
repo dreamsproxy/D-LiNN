@@ -13,7 +13,7 @@ from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QApplication
 
 from planning_graph.definitions import DefinitionRegistry
-from planning_graph.performance import (
+from planning_graph.rendering import (
     configure_runtime,
     detail_tier,
     grid_step_for_lod,
@@ -123,7 +123,11 @@ class PlanningGraphGuiTests(unittest.TestCase):
             self.assertEqual(window.relation_combo.currentText(), "Leads To")
             self.assertGreater(window.palette.count(), 0)
             self.assertEqual(window.view.renderer_backend, "Software Raster")
-            self.assertIn("Renderer: Software Raster", window.renderer_status_label.text())
+            self.assertIn(
+                "Renderer: Software Raster",
+                window.renderer_status_label.text(),
+            )
+            self.assertIsNotNone(window.rendering_menu)
             self.assertFalse(window.performance_action.isChecked())
             window.performance_action.setChecked(True)
             self.assertIn("LOD: Performance", window.renderer_status_label.text())
