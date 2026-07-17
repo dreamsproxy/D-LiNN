@@ -267,6 +267,9 @@ class PlanningGraphModelTests(unittest.TestCase):
             path = Path(directory) / "graph.db"
             save_document(document, path)
             restored = load_document(path)
+            # Windows refuses this unlink while any sqlite3.Connection remains open.
+            path.unlink()
+            self.assertFalse(path.exists())
         self.assertEqual(restored.to_dict(), document.to_dict())
 
     def test_definition_registry_persists_custom_block(self) -> None:
