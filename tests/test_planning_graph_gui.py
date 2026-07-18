@@ -9,10 +9,14 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, QPointF
+from PySide6.QtCore import QPoint, QPointF, QRectF
 from PySide6.QtWidgets import QApplication
 
 from planning_graph.definitions import DefinitionRegistry
+from planning_graph.group_titles import (
+    adaptive_title_font_pixels,
+    overview_group_title_visible,
+)
 from planning_graph.rendering import (
     configure_runtime,
     detail_tier,
@@ -21,6 +25,7 @@ from planning_graph.rendering import (
 )
 from planning_graph.scene import PlanningScene
 from planning_graph.window import PlanningGraphWindow
+from planning_graph.world import expanded_world_rect
 
 
 configure_runtime(software_rendering=True, performance_mode=False)
@@ -116,6 +121,29 @@ class PlanningGraphGuiTests(unittest.TestCase):
         self.assertEqual(grid_step_for_lod(0.30), 250.0)
         self.assertIsNone(grid_step_for_lod(0.10))
 
+    def test_overview_group_titles_remain_readable_for_large_groups(self) -> None:
+        self.assertTrue(overview_group_title_visible(0.05, 3600.0))
+        self.assertFalse(overview_group_title_visible(0.05, 400.0))
+        self.assertGreater(adaptive_title_font_pixels(0.05), 100)
+
+    def test_world_rect_expands_outward_in_chunks(self) -> None:
+        current = QRectF(-10_000.0, -10_000.0, 20_000.0, 20_000.0)
+        expanded = expanded_world_rect(
+            current,
+            QRectF(48_000.0, -200.0, 400.0, 400.0),
+        )
+        self.assertLessEqual(expanded.left(), current.left())
+        self.assertGreaterEqual(expanded.right(), 50_000.0)
+        self.assertEqual(expanded.right() % 10_000.0, 0.0)
+
+    def test_creating_distant_block_expands_scene_world(self) -> None:
+        before = QRectF(self.scene.sceneRect())
+        node = self.scene.create_node("Idea", QPointF(75_000.0, 0.0))
+        item = self.scene.node_items[node.node_id]
+        after = self.scene.sceneRect()
+        self.assertGreater(after.right(), before.right())
+        self.assertTrue(after.contains(item.sceneBoundingRect()))
+
     def test_zoom_recovers_from_scale_below_old_floor(self) -> None:
         window = PlanningGraphWindow()
         try:
@@ -147,6 +175,23 @@ class PlanningGraphGuiTests(unittest.TestCase):
             after = view.visible_scene_center()
             self.assertLess(after.x(), before.x())
             self.assertLess(after.y(), before.y())
+        finally:
+            window.close()
+
+    def test_pan_beyond_current_boundary_expands_world(self) -> None:
+        window = PlanningGraphWindow()
+        try:
+            window.show()
+            _APP.processEvents()
+            view = window.view
+            view.resetTransform()
+            view.zoom_to(1.0)
+            before = QRectF(window.scene.sceneRect())
+            view.pan_by_pixels(QPoint(-60_000, 0))
+            _APP.processEvents()
+            after = window.scene.sceneRect()
+            self.assertGreater(after.right(), before.right())
+            self.assertGreater(view.visible_scene_center().x(), before.right())
         finally:
             window.close()
 
