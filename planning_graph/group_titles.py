@@ -1,10 +1,14 @@
-"""Adaptive, explicit group-title rendering.
+"""Adaptive, explicit group-title rendering and editing flow.
 
 Groups already persist a title in the document model and expose it in the live
 inspector. The normal label is intentionally culled by the LOD renderer at
 large overviews, however, which makes architectural layers difficult to
 identify. This module adds a screen-readable title banner only when the normal
 label has been culled and the projected group is large enough to label.
+
+Newly created groups also emit the existing edit request immediately, placing
+keyboard focus in the live title field without a modal dialog or extra undo
+entry.
 """
 
 from __future__ import annotations
@@ -35,7 +39,7 @@ def adaptive_title_font_pixels(lod: float) -> int:
 
 
 def install_group_title_patches() -> None:
-    """Install the low-LOD group-title banner once."""
+    """Install overview titles and first-class group-title editing once."""
 
     global _INSTALLED
     if _INSTALLED:
@@ -43,9 +47,11 @@ def install_group_title_patches() -> None:
 
     from .items import GraphGroupItem
     from .performance import _lod_from_painter, active_profile
+    from .scene import PlanningScene
     from .theme import TEXT
 
     original_paint = GraphGroupItem.paint
+    original_group_selected_nodes = PlanningScene.group_selected_nodes
 
     def paint(self, painter: QPainter, option, widget=None) -> None:
         original_paint(self, painter, option, widget)
@@ -103,5 +109,12 @@ def install_group_title_patches() -> None:
         )
         painter.restore()
 
+    def group_selected_nodes(self):
+        group = original_group_selected_nodes(self)
+        if group is not None:
+            self.edit_group_requested.emit(group.group_id)
+        return group
+
     GraphGroupItem.paint = paint
+    PlanningScene.group_selected_nodes = group_selected_nodes
     _INSTALLED = True
