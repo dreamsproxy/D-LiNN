@@ -1,0 +1,1635 @@
+{
+  "version": 1,
+  "title": "LiSNN Time-code Frame Training and Recall Flow",
+  "created_at": "2026-07-21T15:10:39+00:00",
+  "updated_at": "2026-07-21T15:10:39+00:00",
+  "nodes": [
+    {
+      "node_id": "main_fn",
+      "kind": "Function",
+      "title": "main()",
+      "body": "Module: main.py\nInput: lichen.mp4\nAction: Loads frames, creates one-hot time codes, constructs the network, trains it, then runs recall evaluation.\nOutput: results.png and plots\nNote: Active top-level path.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "entry"
+      ],
+      "x": -1200.0,
+      "y": -2900.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "load_video_fn",
+      "kind": "Function",
+      "title": "DataLoader.load_video()",
+      "body": "Module: main.py::DataLoader\nInput: Video path, num_repeats\nAction: Reads frames; crops; grayscale converts; resizes to 32x32; scales to 0..500; repeats each frame; keeps every 10th frame.\nOutput: Repeated frame-tick arrays",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "preprocess"
+      ],
+      "x": -650.0,
+      "y": -2900.0,
+      "width": 500.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "video_read_loop",
+      "kind": "Loop",
+      "title": "Read and preprocess every video frame",
+      "body": "while VideoCapture.read() succeeds:\nraw frame → crop → grayscale → 32x32 → scale → repeat num_repeats times.",
+      "status": "Complete",
+      "priority": 4,
+      "tags": [
+        "active-path",
+        "loop"
+      ],
+      "x": -50.0,
+      "y": -2900.0,
+      "width": 450.0,
+      "height": 250.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "subsample_frames",
+      "kind": "Process",
+      "title": "Keep every 10th prepared frame",
+      "body": "Temporal subsampling occurs after preprocessing. The surviving frame index becomes the discrete time-code index.",
+      "status": "Complete",
+      "priority": 4,
+      "tags": [
+        "active-path",
+        "temporal-sampling"
+      ],
+      "x": 500.0,
+      "y": -2900.0,
+      "width": 450.0,
+      "height": 250.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "build_encodings",
+      "kind": "Process",
+      "title": "Build one-hot temporal encodings",
+      "body": "Create fliplr(identity(number_of_frames)) × 500. Each surviving frame gets one unique high-amplitude code.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "time-code"
+      ],
+      "x": 1050.0,
+      "y": -2900.0,
+      "width": 450.0,
+      "height": 250.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "load_image_fn",
+      "kind": "Function",
+      "title": "DataLoader.load_image()",
+      "body": "Module: main.py::DataLoader\nInput: Image path\nAction: Loads grayscale image, crops to 640x640, resizes to 64x64, scales to 0..500.\nOutput: Image array\nNote: Defined but not called by main().",
+      "status": "None",
+      "priority": 2,
+      "tags": [
+        "inactive-path",
+        "utility"
+      ],
+      "x": -650.0,
+      "y": -2500.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "synthetic_fn",
+      "kind": "Function",
+      "title": "DataLoader.synthetic()",
+      "body": "Module: main.py::DataLoader\nInput: Requested shape\nAction: Creates a zero image with one activated center pixel.\nOutput: Synthetic frame\nNote: Defined but not called by main().",
+      "status": "None",
+      "priority": 2,
+      "tags": [
+        "inactive-path",
+        "utility"
+      ],
+      "x": -50.0,
+      "y": -2500.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "network_init_fn",
+      "kind": "Function",
+      "title": "Network.__init__()",
+      "body": "Module: main.py::Network\nInput: 1024 frame neurons, input size, encodings, dt, shape\nAction: Adds one encoding neuron per time code; constructs recurrent weights; builds heterogeneous LIF parameters and spike state.\nOutput: Initialized recurrent spiking network\nNote: Encoding neurons occupy the tail of the neuron vector.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "initialization"
+      ],
+      "x": -1200.0,
+      "y": -1800.0,
+      "width": 500.0,
+      "height": 400.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "wm_init_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.__init__()",
+      "body": "Module: WeightMatrix.py\nInput: Total neuron count, learning rates\nAction: Initializes recurrent weights, Hebbian weights, and unused embedding weights.\nOutput: WeightMatrix state",
+      "status": "Complete",
+      "priority": 4,
+      "tags": [
+        "active-path",
+        "weights"
+      ],
+      "x": -550.0,
+      "y": -1800.0,
+      "width": 500.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "wm_initialize_fn",
+      "kind": "Function",
+      "title": "WeightMatrix._initialize_weights()",
+      "body": "Module: WeightMatrix.py\nInput: Neuron count\nAction: Samples a Glorot-style uniform dense recurrent matrix.\nOutput: Recurrent weight matrix",
+      "status": "Complete",
+      "priority": 4,
+      "tags": [
+        "active-path",
+        "weights"
+      ],
+      "x": 100.0,
+      "y": -1800.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "init_encoding_rows",
+      "kind": "Process",
+      "title": "Seed encoding-neuron rows",
+      "body": "Set the final encoding-neuron rows of the recurrent matrix to 0.5, giving each time-code neuron broad initial influence.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "time-code"
+      ],
+      "x": 650.0,
+      "y": -1800.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "init_lif_params",
+      "kind": "Process",
+      "title": "Initialize neuron and spike state",
+      "body": "Frame neurons receive randomized rest/reset/tau/threshold. Encoding neurons receive fixed parameters. pre_spikes and post_spikes start at zero.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "neurons"
+      ],
+      "x": 1200.0,
+      "y": -1800.0,
+      "width": 500.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "run_fn",
+      "kind": "Function",
+      "title": "Network.run()",
+      "body": "Module: main.py::Network\nInput: Prepared repeated frames\nAction: Loops over frame indices and repeated ticks; composes frame pixels, matching time code, and recurrent feedback; calls Network.step().\nOutput: Updated neuron state and recurrent weights\nNote: Every fourth frame index triggers pruning.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "training"
+      ],
+      "x": -1200.0,
+      "y": -800.0,
+      "width": 500.0,
+      "height": 400.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "frame_loop",
+      "kind": "Loop",
+      "title": "For each frame_index",
+      "body": "Select one prepared frame and its matching one-hot encoding. Initialize recurrent_signal from the previous spike state.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "outer-loop"
+      ],
+      "x": -550.0,
+      "y": -800.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "tick_loop",
+      "kind": "Loop",
+      "title": "For each repeated frame tick",
+      "body": "Repeat the same frame several times so its association is reinforced through recurrent updates.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "inner-loop"
+      ],
+      "x": 0.0,
+      "y": -800.0,
+      "width": 450.0,
+      "height": 250.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "compose_training_input",
+      "kind": "Process",
+      "title": "Compose frame + time code + recurrence",
+      "body": "Flatten 32x32 frame to 1024 values; append frame encoding; add recurrent_signal elementwise.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "input-composition"
+      ],
+      "x": 550.0,
+      "y": -800.0,
+      "width": 500.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "prune_schedule",
+      "kind": "Decision",
+      "title": "frame_index % 4 == 0?",
+      "body": "After all ticks for a frame, periodically prune recurrent weights below 1e-4.",
+      "status": "Complete",
+      "priority": 4,
+      "tags": [
+        "active-path",
+        "schedule"
+      ],
+      "x": 1150.0,
+      "y": -800.0,
+      "width": 450.0,
+      "height": 250.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "prune_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.prune_weights()",
+      "body": "Module: WeightMatrix.py\nInput: Threshold\nAction: Sets recurrent weights below threshold to zero.\nOutput: Sparser recurrent matrix",
+      "status": "Complete",
+      "priority": 4,
+      "tags": [
+        "active-path",
+        "weights"
+      ],
+      "x": 1150.0,
+      "y": -450.0,
+      "width": 450.0,
+      "height": 250.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "network_step_fn",
+      "kind": "Function",
+      "title": "Network.step()",
+      "body": "Module: main.py::Network\nInput: Frame + time code + recurrent vector\nAction: Updates neuron activity, extracts spike magnitudes, computes reconstruction error, applies error resets, updates weights, and propagates the next recurrent signal.\nOutput: recurrent_signal for the next tick",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "core-step"
+      ],
+      "x": -1200.0,
+      "y": 300.0,
+      "width": 500.0,
+      "height": 400.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "neuron_loop",
+      "kind": "Loop",
+      "title": "For each neuron",
+      "body": "Frame neurons call LIF.step(). Encoding neurons are forced to their threshold value instead of integrating normally.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "neuron-loop"
+      ],
+      "x": -550.0,
+      "y": 300.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "lif_step_fn",
+      "kind": "Function",
+      "title": "LIF.step()",
+      "body": "Module: LIF.py\nInput: Neuron parameter vector, current input\nAction: Computes leaky membrane change, threshold crossing, reset after firing, and returns pre-reset activation plus new membrane potential.\nOutput: (weighted potential, new potential)\nNote: Training writes new potential back into the neuron state.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "neuron-update"
+      ],
+      "x": 0.0,
+      "y": 300.0,
+      "width": 500.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "compute_spikes_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.compute_spikes()",
+      "body": "Module: WeightMatrix.py\nInput: Potential-like values, thresholds\nAction: Applies max(0, potential - threshold).\nOutput: Nonnegative spike-magnitude vector",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "spikes"
+      ],
+      "x": 600.0,
+      "y": 300.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "normalize_fn",
+      "kind": "Function",
+      "title": "normalize()",
+      "body": "Module: main.py\nInput: Numeric vector\nAction: Min-max normalizes the vector.\nOutput: 0..1 vector\nNote: Used on frame-neuron input and frame-neuron output.",
+      "status": "Complete",
+      "priority": 4,
+      "tags": [
+        "active-path",
+        "error"
+      ],
+      "x": 1150.0,
+      "y": 300.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "error_vector",
+      "kind": "Process",
+      "title": "Compute frame reconstruction error",
+      "body": "Absolute difference between normalized frame-neuron input and normalized frame-neuron post-spikes.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "error"
+      ],
+      "x": -550.0,
+      "y": 700.0,
+      "width": 500.0,
+      "height": 250.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "error_threshold_loop",
+      "kind": "Loop",
+      "title": "Scan thresholds 1.0 → 0.1",
+      "body": "At the first threshold with excessive error indices, force those post-spikes to each neuron's reset potential and stop scanning.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "error-correction"
+      ],
+      "x": 50.0,
+      "y": 700.0,
+      "width": 550.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "clip_schedule",
+      "kind": "Decision",
+      "title": "global_step_tick % 8",
+      "body": "Controls clipping for the combined update. In the preserved code, clipping is enabled on nonmultiples of eight.",
+      "status": "Complete",
+      "priority": 4,
+      "tags": [
+        "active-path",
+        "schedule"
+      ],
+      "x": 750.0,
+      "y": 700.0,
+      "width": 500.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "advance_state",
+      "kind": "Process",
+      "title": "Advance recurrent state",
+      "body": "Copy post_spikes to pre_spikes; increment global_step_tick; return propagated signals to Network.run().",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "state"
+      ],
+      "x": 1350.0,
+      "y": 700.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "update_combined_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.update_weights_combined()",
+      "body": "Module: WeightMatrix.py\nInput: pre/post spikes, taus, clip flag, top_k, error\nAction: Restricts learning to strongest post-neurons, computes STDP, updates Hebbian weights, merges both matrices, optionally clips, and row-normalizes.\nOutput: Updated recurrent matrix\nNote: error is passed but not directly used.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "learning-rule"
+      ],
+      "x": -1200.0,
+      "y": 1500.0,
+      "width": 550.0,
+      "height": 450.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "select_top_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.select_top_k_neurons()",
+      "body": "Module: WeightMatrix.py\nInput: Post-spike vector, k\nAction: Returns indices of the k largest spike magnitudes.\nOutput: Winner indices",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "competition"
+      ],
+      "x": -500.0,
+      "y": 1500.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "restrict_post",
+      "kind": "Process",
+      "title": "Restrict post-spikes to winners",
+      "body": "Create a zero vector and copy only top-k post-spikes into it. Other neurons cannot drive this learning update.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "competition"
+      ],
+      "x": 50.0,
+      "y": 1500.0,
+      "width": 500.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "compute_stdp_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.compute_stdp_updates()",
+      "body": "Module: WeightMatrix.py\nInput: delta_t, learning rates, spikes, taus\nAction: Applies the exponential timing-dependent update rule.\nOutput: Dense STDP update matrix",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "stdp"
+      ],
+      "x": 650.0,
+      "y": 1500.0,
+      "width": 550.0,
+      "height": 400.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "update_hebb_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.update_weights_hebb()",
+      "body": "Module: WeightMatrix.py\nInput: Restricted post-spikes\nAction: Finds active/inactive positions, increments active Hebbian weights, decrements inactive weights, optionally clips.\nOutput: Updated Hebbian matrix",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "hebbian"
+      ],
+      "x": 1300.0,
+      "y": 1500.0,
+      "width": 550.0,
+      "height": 400.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "compute_hebb_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.compute_hebb_updates()",
+      "body": "Module: WeightMatrix.py\nInput: Restricted post-spikes\nAction: Returns indices where activity is positive and where it is zero.\nOutput: Increase/decrease index sets",
+      "status": "Complete",
+      "priority": 4,
+      "tags": [
+        "active-path",
+        "hebbian"
+      ],
+      "x": 1300.0,
+      "y": 1950.0,
+      "width": 500.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "merge_weight_rules",
+      "kind": "Process",
+      "title": "Merge STDP and Hebbian matrices",
+      "body": "Add STDP update to recurrent weights; average recurrent and Hebbian matrices; optionally clip; L2-normalize each row.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "learning-rule"
+      ],
+      "x": -200.0,
+      "y": 2000.0,
+      "width": 550.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "propagate_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.propagate_signals()",
+      "body": "Module: WeightMatrix.py\nInput: Post-spikes, propagation method\nAction: Computes weights dot spikes. Training uses mean; recall uses sum.\nOutput: Next recurrent signal",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "recurrence"
+      ],
+      "x": 500.0,
+      "y": 2000.0,
+      "width": 550.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "update_stdp_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.update_weights_stdp()",
+      "body": "Module: WeightMatrix.py\nInput: pre/post spikes, taus\nAction: Computes unrestricted STDP and adds it directly to recurrent weights.\nOutput: Updated recurrent weights\nNote: Defined but not called by the active path.",
+      "status": "None",
+      "priority": 2,
+      "tags": [
+        "inactive-path",
+        "alternative-learning"
+      ],
+      "x": -1200.0,
+      "y": 2050.0,
+      "width": 500.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "select_bot_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.select_bot_k_neurons()",
+      "body": "Module: WeightMatrix.py\nInput: Spike vector, k\nAction: Returns indices of the k smallest spike magnitudes.\nOutput: Lowest-activity indices\nNote: Defined but not called by the active path.",
+      "status": "None",
+      "priority": 2,
+      "tags": [
+        "inactive-path",
+        "utility"
+      ],
+      "x": 1150.0,
+      "y": 2350.0,
+      "width": 500.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "infer_fn",
+      "kind": "Function",
+      "title": "Network.infer()",
+      "body": "Module: main.py::Network\nInput: Ground-truth samples, all temporal encodings\nAction: Recalls every encoded frame; reshapes activity; normalizes; computes difference map and MSE; plots ground truth/recall/diff.\nOutput: results.png and displayed figure",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "evaluation"
+      ],
+      "x": -1200.0,
+      "y": 3050.0,
+      "width": 550.0,
+      "height": 400.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "encoding_eval_loop",
+      "kind": "Loop",
+      "title": "For each temporal encoding",
+      "body": "Use one time code as the only initial cue. infer() calls recall(encoding, 255).",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "recall-loop"
+      ],
+      "x": -500.0,
+      "y": 3050.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "recall_fn",
+      "kind": "Function",
+      "title": "Network.recall()",
+      "body": "Module: main.py::Network\nInput: One temporal encoding, tick count\nAction: Writes the code into the encoding-neuron tail of an otherwise zero input; recurrently runs LIF activity; accumulates spikes.\nOutput: recall_spikes\nNote: The returned new membrane potential from LIF.step() is discarded during recall.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "recall"
+      ],
+      "x": 50.0,
+      "y": 3050.0,
+      "width": 550.0,
+      "height": 450.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "recall_tick_loop",
+      "kind": "Loop",
+      "title": "For each recall tick",
+      "body": "After tick 0, add previous propagated signal to recall_input; update neurons; compute spikes; propagate by sum; accumulate spikes.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "recurrent-loop"
+      ],
+      "x": 750.0,
+      "y": 3050.0,
+      "width": 550.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "recall_lif_loop",
+      "kind": "Loop",
+      "title": "For each neuron during recall",
+      "body": "Call LIF.step(); reject NaN; collect pre-reset activation into spike_cache.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "neuron-loop"
+      ],
+      "x": 1450.0,
+      "y": 3050.0,
+      "width": 500.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "frame_readout",
+      "kind": "Process",
+      "title": "Extract and reshape frame recall",
+      "body": "Drop encoding-neuron tail; take first 1024 accumulated values; reshape to 32x32; min-max normalize.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "readout"
+      ],
+      "x": 50.0,
+      "y": 3550.0,
+      "width": 500.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "compare_frames",
+      "kind": "Process",
+      "title": "Compare recall against ground truth",
+      "body": "Normalize ground truth; compute and normalize absolute difference; compute mean squared difference; plot all three panels.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "active-path",
+        "evaluation"
+      ],
+      "x": 700.0,
+      "y": 3550.0,
+      "width": 550.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "parse_params_fn",
+      "kind": "Function",
+      "title": "LIF.parse_params()",
+      "body": "Module: LIF.py\nInput: Neuron parameter dictionary\nAction: Converts named values into the fixed numeric order expected by LIF.step().\nOutput: Numeric parameter vector\nNote: Not used by active path.",
+      "status": "None",
+      "priority": 2,
+      "tags": [
+        "inactive-path",
+        "utility"
+      ],
+      "x": -1200.0,
+      "y": 4300.0,
+      "width": 500.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "weight_stats_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.weight_stats",
+      "body": "Module: WeightMatrix.py\nInput: Current recurrent matrix\nAction: Prints standard deviation, mean, minimum, maximum.\nOutput: Console diagnostics\nNote: Not used by active path.",
+      "status": "None",
+      "priority": 2,
+      "tags": [
+        "inactive-path",
+        "diagnostic"
+      ],
+      "x": -550.0,
+      "y": 4300.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "get_weights_fn",
+      "kind": "Function",
+      "title": "WeightMatrix.get_weights()",
+      "body": "Module: WeightMatrix.py\nInput: WeightMatrix state\nAction: Returns recurrent weights.\nOutput: Weight array\nNote: Not used by active path.",
+      "status": "None",
+      "priority": 2,
+      "tags": [
+        "inactive-path",
+        "utility"
+      ],
+      "x": 50.0,
+      "y": 4300.0,
+      "width": 450.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "system_summary",
+      "kind": "Note",
+      "title": "Recovered mechanism in one sentence",
+      "body": "A unique one-hot time code is concatenated with one frame, repeatedly injected into a recurrent LIF network, and associated through winner-restricted STDP plus Hebbian updates; later, the code alone reactivates a frame-shaped spike pattern.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "summary"
+      ],
+      "x": 1150.0,
+      "y": 4300.0,
+      "width": 650.0,
+      "height": 350.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "training_summary",
+      "kind": "Loop",
+      "title": "Core training loop",
+      "body": "frame_index → repeated tick → frame + code + recurrence → neuron update → error correction → weight update → recurrent propagation → next tick.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "summary",
+        "training-loop"
+      ],
+      "x": 1150.0,
+      "y": 4700.0,
+      "width": 650.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    },
+    {
+      "node_id": "recall_summary",
+      "kind": "Loop",
+      "title": "Core recall loop",
+      "body": "time code only → recurrent LIF activity → spike extraction → recurrent propagation → accumulated frame-neuron activity → 32x32 readout.",
+      "status": "Complete",
+      "priority": 5,
+      "tags": [
+        "summary",
+        "recall-loop"
+      ],
+      "x": 1150.0,
+      "y": 5050.0,
+      "width": 650.0,
+      "height": 300.0,
+      "header_font_size": 12,
+      "title_font_size": 14,
+      "body_font_size": 12,
+      "footer_font_size": 12
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "e1",
+      "source_id": "main_fn",
+      "target_id": "load_video_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e2",
+      "source_id": "load_video_fn",
+      "target_id": "video_read_loop",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e3",
+      "source_id": "video_read_loop",
+      "target_id": "subsample_frames",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e4",
+      "source_id": "subsample_frames",
+      "target_id": "build_encodings",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e5",
+      "source_id": "build_encodings",
+      "target_id": "network_init_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e6",
+      "source_id": "network_init_fn",
+      "target_id": "wm_init_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e7",
+      "source_id": "wm_init_fn",
+      "target_id": "wm_initialize_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e8",
+      "source_id": "wm_initialize_fn",
+      "target_id": "init_encoding_rows",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e9",
+      "source_id": "network_init_fn",
+      "target_id": "init_lif_params",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e10",
+      "source_id": "network_init_fn",
+      "target_id": "run_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e11",
+      "source_id": "run_fn",
+      "target_id": "frame_loop",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e12",
+      "source_id": "frame_loop",
+      "target_id": "tick_loop",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e13",
+      "source_id": "tick_loop",
+      "target_id": "compose_training_input",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e14",
+      "source_id": "compose_training_input",
+      "target_id": "network_step_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": 1750.0,
+      "route_y": 150.0
+    },
+    {
+      "edge_id": "e15",
+      "source_id": "network_step_fn",
+      "target_id": "neuron_loop",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e16",
+      "source_id": "neuron_loop",
+      "target_id": "lif_step_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e17",
+      "source_id": "lif_step_fn",
+      "target_id": "compute_spikes_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e18",
+      "source_id": "compute_spikes_fn",
+      "target_id": "normalize_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e19",
+      "source_id": "normalize_fn",
+      "target_id": "error_vector",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e20",
+      "source_id": "error_vector",
+      "target_id": "error_threshold_loop",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e21",
+      "source_id": "error_threshold_loop",
+      "target_id": "clip_schedule",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e22",
+      "source_id": "clip_schedule",
+      "target_id": "update_combined_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": 1750.0,
+      "route_y": 1500.0
+    },
+    {
+      "edge_id": "e23",
+      "source_id": "update_combined_fn",
+      "target_id": "select_top_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e24",
+      "source_id": "select_top_fn",
+      "target_id": "restrict_post",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e25",
+      "source_id": "restrict_post",
+      "target_id": "compute_stdp_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e26",
+      "source_id": "restrict_post",
+      "target_id": "update_hebb_fn",
+      "relation": "Supports",
+      "label": "same restricted spikes",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e27",
+      "source_id": "update_hebb_fn",
+      "target_id": "compute_hebb_fn",
+      "relation": "Depends On",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e28",
+      "source_id": "compute_stdp_fn",
+      "target_id": "merge_weight_rules",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e29",
+      "source_id": "update_hebb_fn",
+      "target_id": "merge_weight_rules",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e30",
+      "source_id": "merge_weight_rules",
+      "target_id": "propagate_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e31",
+      "source_id": "propagate_fn",
+      "target_id": "advance_state",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": 1700.0,
+      "route_y": 900.0
+    },
+    {
+      "edge_id": "e32",
+      "source_id": "advance_state",
+      "target_id": "tick_loop",
+      "relation": "Leads To",
+      "label": "next repeated tick",
+      "weight": 1.0,
+      "route_x": 1650.0,
+      "route_y": -650.0
+    },
+    {
+      "edge_id": "e33",
+      "source_id": "tick_loop",
+      "target_id": "prune_schedule",
+      "relation": "Leads To",
+      "label": "after final tick",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e34",
+      "source_id": "prune_schedule",
+      "target_id": "prune_fn",
+      "relation": "Leads To",
+      "label": "yes",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e35",
+      "source_id": "prune_schedule",
+      "target_id": "frame_loop",
+      "relation": "Leads To",
+      "label": "next frame",
+      "weight": 1.0,
+      "route_x": 1600.0,
+      "route_y": -950.0
+    },
+    {
+      "edge_id": "e36",
+      "source_id": "run_fn",
+      "target_id": "infer_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": -1450.0,
+      "route_y": 2600.0
+    },
+    {
+      "edge_id": "e37",
+      "source_id": "infer_fn",
+      "target_id": "encoding_eval_loop",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e38",
+      "source_id": "encoding_eval_loop",
+      "target_id": "recall_fn",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e39",
+      "source_id": "recall_fn",
+      "target_id": "recall_tick_loop",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e40",
+      "source_id": "recall_tick_loop",
+      "target_id": "recall_lif_loop",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e41",
+      "source_id": "recall_lif_loop",
+      "target_id": "compute_spikes_fn",
+      "relation": "Depends On",
+      "label": "same spike extractor",
+      "weight": 1.0,
+      "route_x": 1900.0,
+      "route_y": 1600.0
+    },
+    {
+      "edge_id": "e42",
+      "source_id": "recall_lif_loop",
+      "target_id": "propagate_fn",
+      "relation": "Depends On",
+      "label": "method='sum'",
+      "weight": 1.0,
+      "route_x": 1850.0,
+      "route_y": 2350.0
+    },
+    {
+      "edge_id": "e43",
+      "source_id": "recall_fn",
+      "target_id": "frame_readout",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e44",
+      "source_id": "frame_readout",
+      "target_id": "compare_frames",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e45",
+      "source_id": "compare_frames",
+      "target_id": "encoding_eval_loop",
+      "relation": "Leads To",
+      "label": "next encoding",
+      "weight": 1.0,
+      "route_x": 1500.0,
+      "route_y": 3900.0
+    },
+    {
+      "edge_id": "e46",
+      "source_id": "system_summary",
+      "target_id": "training_summary",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    },
+    {
+      "edge_id": "e47",
+      "source_id": "training_summary",
+      "target_id": "recall_summary",
+      "relation": "Leads To",
+      "label": "",
+      "weight": 1.0,
+      "route_x": null,
+      "route_y": null
+    }
+  ],
+  "groups": [
+    {
+      "group_id": "g_input",
+      "title": "Phase 1 — Video preprocessing and temporal-code construction",
+      "node_ids": [
+        "main_fn",
+        "load_video_fn",
+        "video_read_loop",
+        "subsample_frames",
+        "build_encodings",
+        "load_image_fn",
+        "synthetic_fn"
+      ],
+      "backdrop": true,
+      "color": "#3B5B78",
+      "x": -1500.0,
+      "y": -3100.0,
+      "width": 3300.0,
+      "height": 1000.0,
+      "layer": 0
+    },
+    {
+      "group_id": "g_init",
+      "title": "Phase 2 — Network, neuron, and recurrent-weight initialization",
+      "node_ids": [
+        "network_init_fn",
+        "wm_init_fn",
+        "wm_initialize_fn",
+        "init_encoding_rows",
+        "init_lif_params"
+      ],
+      "backdrop": true,
+      "color": "#4F6B52",
+      "x": -1500.0,
+      "y": -2050.0,
+      "width": 3300.0,
+      "height": 800.0,
+      "layer": 1
+    },
+    {
+      "group_id": "g_training",
+      "title": "Phase 3 — Frame-index and repeated-tick training loop",
+      "node_ids": [
+        "run_fn",
+        "frame_loop",
+        "tick_loop",
+        "compose_training_input",
+        "prune_schedule",
+        "prune_fn"
+      ],
+      "backdrop": true,
+      "color": "#6C5B3D",
+      "x": -1500.0,
+      "y": -1050.0,
+      "width": 3300.0,
+      "height": 950.0,
+      "layer": 2
+    },
+    {
+      "group_id": "g_step",
+      "title": "Phase 4 — Per-tick neuron update, spike extraction, and error correction",
+      "node_ids": [
+        "network_step_fn",
+        "neuron_loop",
+        "lif_step_fn",
+        "compute_spikes_fn",
+        "normalize_fn",
+        "error_vector",
+        "error_threshold_loop",
+        "clip_schedule",
+        "advance_state"
+      ],
+      "backdrop": true,
+      "color": "#5E4B73",
+      "x": -1500.0,
+      "y": 0.0,
+      "width": 3500.0,
+      "height": 1200.0,
+      "layer": 3
+    },
+    {
+      "group_id": "g_weights",
+      "title": "Phase 5 — Winner-restricted STDP + Hebbian recurrent-weight update",
+      "node_ids": [
+        "update_combined_fn",
+        "select_top_fn",
+        "restrict_post",
+        "compute_stdp_fn",
+        "update_hebb_fn",
+        "compute_hebb_fn",
+        "merge_weight_rules",
+        "propagate_fn",
+        "update_stdp_fn",
+        "select_bot_fn"
+      ],
+      "backdrop": true,
+      "color": "#3D6A70",
+      "x": -1500.0,
+      "y": 1250.0,
+      "width": 3500.0,
+      "height": 1500.0,
+      "layer": 4
+    },
+    {
+      "group_id": "g_recall",
+      "title": "Phase 6 — Time-code-only recurrent recall and frame reconstruction",
+      "node_ids": [
+        "infer_fn",
+        "encoding_eval_loop",
+        "recall_fn",
+        "recall_tick_loop",
+        "recall_lif_loop",
+        "frame_readout",
+        "compare_frames"
+      ],
+      "backdrop": true,
+      "color": "#6A4C58",
+      "x": -1500.0,
+      "y": 2800.0,
+      "width": 3500.0,
+      "height": 1150.0,
+      "layer": 5
+    },
+    {
+      "group_id": "g_util",
+      "title": "Defined support functions not used by the active baseline path",
+      "node_ids": [
+        "parse_params_fn",
+        "weight_stats_fn",
+        "get_weights_fn"
+      ],
+      "backdrop": true,
+      "color": "#4C5563",
+      "x": -1500.0,
+      "y": 4100.0,
+      "width": 2300.0,
+      "height": 650.0,
+      "layer": 6
+    },
+    {
+      "group_id": "g_overview",
+      "title": "Recovered active mechanism — concise overview",
+      "node_ids": [
+        "system_summary",
+        "training_summary",
+        "recall_summary"
+      ],
+      "backdrop": true,
+      "color": "#3B5B78",
+      "x": 900.0,
+      "y": 4100.0,
+      "width": 1200.0,
+      "height": 1350.0,
+      "layer": 7
+    }
+  ]
+}
