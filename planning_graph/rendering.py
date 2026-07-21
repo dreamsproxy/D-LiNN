@@ -3,14 +3,16 @@
 Qt platform plugins differ in how long borrowed native-menu wrappers remain
 valid. This module installs the renderer while giving the performance toggle
 its own Python-owned menu, avoiding transient QMenu wrappers on offscreen and
-native-menu platforms. Navigation is installed separately so zoom and pan
-behavior remain identical under OpenGL and software raster rendering.
+native-menu platforms. Navigation, the expanding world, and overview group
+titles remain independent of the OpenGL/software backend.
 """
 
 from __future__ import annotations
 
+from . import group_titles as _group_titles
 from . import navigation as _navigation
 from . import performance as _performance
+from . import world as _world
 
 RenderProfile = _performance.RenderProfile
 BALANCED_PROFILE = _performance.BALANCED_PROFILE
@@ -26,7 +28,7 @@ _INSTALLED = False
 
 
 def install_runtime_patches() -> None:
-    """Install renderer, navigation, and a persistent Rendering menu."""
+    """Install renderer, navigation, expanding world, titles, and UI controls."""
 
     global _INSTALLED
     if _INSTALLED:
@@ -39,10 +41,19 @@ def install_runtime_patches() -> None:
     _performance._find_menu = lambda window, title: None
     _performance.install_runtime_patches()
 
-    # Install after the renderer so the navigation initializer wraps the final
+    # Install navigation after the renderer so it wraps the final
     # OpenGL/software viewport initializer. Event handling itself remains
     # backend-independent.
     _navigation.install_navigation_patches()
+
+    # The world wrapper must follow navigation because it extends zoom and pan
+    # with scene-rect expansion. The scene rectangle remains finite at any one
+    # moment but grows in stable chunks whenever content or the viewport moves.
+    _world.install_world_patches()
+
+    # Install after the LOD painter so the title banner only supplements the
+    # overview tiers where the normal group label has been culled.
+    _group_titles.install_group_title_patches()
 
     from .window import PlanningGraphWindow
 
